@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "types": ["vite/client"],
+    // tsc -b 的增量信息放进 node_modules/.cache，不落在根目录
+    "tsBuildInfoFile": "node_modules/.cache/tsconfig.tsbuildinfo",
+    // 效果页按包名引入 kgstrata：指到 src/ 的源码（和 demo/vite.config.ts 的别名同一张表）
+    "paths": {
+      "kgstrata": ["./src/index.ts"],
+      "kgstrata/headless": ["./src/headless.ts"],
+      "kgstrata/path": ["./src/path/index.ts"],
+      "kgstrata/diff": ["./src/diff/index.ts"],
+      "kgstrata/react": ["./src/react/index.ts"],
+      "kgstrata/react/path": ["./src/react/path.tsx"],
+      "kgstrata/react/diff": ["./src/react/diff.tsx"],
+      "kgstrata/react/styles.css": ["./src/react/styles.css"]
+    }
+  },
+  "include": ["src", "demo/src", "tests"]
+}

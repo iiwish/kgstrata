@@ -1,0 +1,15 @@
+{
+  // check:pack 用：按包名（kgstrata、kgstrata/path…）引入 dist 里的类型声明，确认 exports 和模块增强在产物里成立
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": false,
+    "types": []
+  },
+  "files": ["check.ts"]
+}

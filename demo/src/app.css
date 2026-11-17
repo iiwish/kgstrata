@@ -1,0 +1,64 @@
+:root {
+  color-scheme: dark;
+  --bg: #04060a;
+  --overlay: rgba(14, 18, 26, 0.72);
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.13);
+  --text: #e7ebf3;
+  --text-2: #a6afbf;
+  --text-3: #7a8495;
+  --accent: #9fe6ff;
+  --font: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; overflow: hidden; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; padding: 0; }
+button:focus-visible { outline: 1.5px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+.app { position: fixed; inset: 0; }
+.stage { position: absolute; inset: 0; }
+
+/* 品牌 */
+.brand { position: absolute; left: 22px; top: 18px; display: flex; flex-direction: column; gap: 2px; pointer-events: none; }
+.brand .mark { font: 600 15px/1 ui-monospace, 'SF Mono', Menlo, monospace; letter-spacing: 0.22em; color: var(--text); }
+.brand .sub { font-size: 12px; color: var(--text-3); letter-spacing: 0.04em; }
+
+/* 模式 */
+.modes { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--overlay); border: 1px solid var(--border); backdrop-filter: blur(16px); }
+.modes button { white-space: nowrap; padding: 5px 16px; border-radius: 7px; color: var(--text-2); font-size: 13px; letter-spacing: 0.08em; transition: color .2s, background .2s; }
+.modes button:hover { color: var(--text); }
+.modes button[aria-selected='true'] { color: var(--text); background: rgba(159, 230, 255, 0.12); box-shadow: 0 0 0 1px rgba(159, 230, 255, 0.22) inset; }
+
+/* 语言 */
+.langs { position: absolute; right: 18px; top: 18px; display: flex; gap: 2px; padding: 3px; border-radius: 9px; background: var(--overlay); border: 1px solid var(--border); backdrop-filter: blur(16px); }
+.langs a { padding: 3px 10px; border-radius: 6px; font-size: 12px; color: var(--text-3); text-decoration: none; letter-spacing: 0.04em; transition: color .2s, background .2s; }
+.langs a:hover { color: var(--text); }
+.langs a[aria-current='true'] { color: var(--text); background: rgba(159, 230, 255, 0.12); }
+
+/* 层：面板本身的样子在 kgstrata/react/styles.css 里，这里只管放在哪儿 */
+.layers { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); width: 168px; padding: 8px; }
+
+/* 镜头 */
+.cams { position: absolute; left: 18px; bottom: 18px; }
+
+/* 右侧 */
+.side { position: absolute; right: 18px; top: 72px; width: 316px; max-height: calc(100% - 96px); overflow: auto; padding: 10px; }
+.side::-webkit-scrollbar { width: 6px; }
+.side::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 3px; }
+
+.legend { width: 168px; }
+.legend ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.legend li { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 8px; font-size: 13px; color: var(--text-2); cursor: default; transition: background .2s, color .2s; }
+.legend li:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
+.legend li i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+
+@media (max-width: 760px) {
+  .layers { top: auto; bottom: 64px; transform: none; width: 150px; }
+  .side { top: auto; bottom: 16px; left: 16px; right: 16px; width: auto; max-height: 40%; }
+  .legend { display: none; }
+  .modes { top: 60px; }
+  .layers .kgs-layer-count, .layers .kgs-slider { display: none; }
+  .layers { width: 112px; }
+}

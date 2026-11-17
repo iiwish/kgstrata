@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>kgstrata · diff</title>
+    <style>
+      html, body { height: 100%; margin: 0; background: #070a13; color: #e7ebf3; font: 13px/1.5 system-ui, sans-serif; }
+      #app { position: fixed; inset: 0; }
+      #panel { position: fixed; right: 16px; top: 16px; width: 280px; padding: 12px; border-radius: 10px; background: rgba(14, 18, 26, 0.8); }
+      #panel button { font: inherit; color: inherit; background: rgba(255, 255, 255, 0.06); border: 0; border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+      #hunks { padding-left: 18px; }
+      #hunks li { cursor: pointer; }
+      #hunks small { display: block; color: #a6afbf; }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="panel">
+      <div>
+        <button data-layer="union">Both</button>
+        <button data-layer="before">Before</button>
+        <button data-layer="after">After</button>
+        <button id="play">Replay</button>
+      </div>
+      <p id="stats"></p>
+      <ol id="hunks"></ol>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

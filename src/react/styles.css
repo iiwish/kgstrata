@@ -1,0 +1,130 @@
+/*
+ * kgstrata/react 面板的样式（可选）：import 'kgstrata/react/styles.css'。
+ * 只管面板自己的样子，不管放在哪儿：位置、宽度由用的人定。.kgs-panel 是一块毛玻璃底子，可以套在面板外面。
+ * 颜色都是 CSS 变量，在 :root 或任意外层容器上改掉即可。
+ */
+:root {
+  --kgs-bg: #04060a;
+  --kgs-overlay: rgba(14, 18, 26, 0.72);
+  --kgs-border: rgba(255, 255, 255, 0.07);
+  --kgs-border-strong: rgba(255, 255, 255, 0.13);
+  --kgs-text: #e7ebf3;
+  --kgs-text-2: #a6afbf;
+  --kgs-text-3: #7a8495;
+  --kgs-accent: #9fe6ff;
+  --kgs-accent-rgb: 159, 230, 255;
+  --kgs-hover: rgba(255, 255, 255, 0.04);
+  --kgs-pressed: rgba(255, 255, 255, 0.07);
+  --kgs-track: rgba(255, 255, 255, 0.14);
+  --kgs-badge-bg: rgba(255, 190, 110, 0.18);
+  --kgs-badge-text: #ffcf8a;
+  --kgs-mark: linear-gradient(90deg, #9fb4ff, #9fe6ff);
+}
+
+/* 按钮清掉浏览器的样子；点击区域不小于 28px */
+:where(.kgs-panel, .kgs-layer-list, .kgs-follow, .kgs-views, .kgs-paths, .kgs-diff) button,
+.kgs-follow {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 0;
+  min-height: 28px;
+}
+:where(.kgs-panel, .kgs-layer-list, .kgs-follow, .kgs-views, .kgs-paths, .kgs-diff) button:focus-visible,
+.kgs-follow:focus-visible,
+.kgs-range:focus-visible {
+  outline: 1.5px solid var(--kgs-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.kgs-panel {
+  background: var(--kgs-overlay);
+  border: 1px solid var(--kgs-border);
+  border-radius: 12px;
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+}
+
+.kgs-fallback { display: flex; align-items: center; justify-content: center; height: 100%; padding: 24px; color: var(--kgs-text-3); font-size: 13px; text-align: center; }
+
+/* 层列表 */
+.kgs-layer-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.kgs-layer { display: flex; align-items: center; gap: 2px; }
+.kgs-layer button { width: 100%; display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 8px; color: var(--kgs-text-2); font-size: 13px; transition: background .2s, color .2s; }
+.kgs-layer button:hover { background: var(--kgs-hover); color: var(--kgs-text); }
+.kgs-layer button[aria-pressed='true'] { background: rgba(var(--kgs-accent-rgb), 0.1); color: var(--kgs-text); }
+.kgs-layer .kgs-layer-main { flex: 1; min-width: 0; }
+.kgs-layer .kgs-layer-eye { width: 28px; min-width: 28px; flex: none; justify-content: center; padding: 7px 0; color: var(--kgs-text-3); }
+.kgs-layer .kgs-layer-eye:hover { color: var(--kgs-text); }
+.kgs-layer.kgs-off .kgs-layer-main { color: var(--kgs-text-3); cursor: default; }
+.kgs-layer.kgs-off .kgs-layer-main:hover { background: none; color: var(--kgs-text-3); }
+.kgs-layer.kgs-off .kgs-layer-eye { color: var(--kgs-text-3); opacity: 0.7; }
+.kgs-layer-mark { width: 14px; height: 4px; border-radius: 2px; background: var(--kgs-mark); box-shadow: 0 0 8px rgba(var(--kgs-accent-rgb), 0.45); flex: none; transition: opacity .2s; }
+.kgs-layer-badge { text-decoration: none; font-size: 11px; padding: 0 5px; border-radius: 7px; background: var(--kgs-badge-bg); color: var(--kgs-badge-text); font-variant-numeric: tabular-nums; }
+.kgs-layer-count { margin-left: auto; font-style: normal; font-size: 12px; color: var(--kgs-text-3); font-variant-numeric: tabular-nums; }
+
+/* 主角跟随 */
+.kgs-follow { width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px; margin-top: 6px; border-top: 1px solid var(--kgs-border); border-radius: 0 0 8px 8px; font-size: 12px; color: var(--kgs-text-3); transition: color .2s; }
+.kgs-follow:hover { color: var(--kgs-text-2); }
+.kgs-switch { width: 22px; height: 12px; border-radius: 6px; background: var(--kgs-track); position: relative; flex: none; transition: background .2s; }
+.kgs-switch::after { content: ''; position: absolute; left: 2px; top: 2px; width: 8px; height: 8px; border-radius: 50%; background: var(--kgs-text-3); transition: transform .2s, background .2s; }
+.kgs-follow[aria-pressed='true'] { color: var(--kgs-text); }
+.kgs-follow[aria-pressed='true'] .kgs-switch { background: rgba(var(--kgs-accent-rgb), 0.35); }
+.kgs-follow[aria-pressed='true'] .kgs-switch::after { transform: translateX(10px); background: var(--kgs-accent); }
+
+/* 滑杆 */
+.kgs-slider { display: flex; align-items: center; gap: 10px; padding: 10px 8px 4px; margin-top: 6px; border-top: 1px solid var(--kgs-border); font-size: 12px; color: var(--kgs-text-3); }
+.kgs-slider .kgs-range { flex: 1; min-width: 0; }
+.kgs-range { -webkit-appearance: none; appearance: none; height: 16px; margin: 0; background: transparent; }
+.kgs-range::-webkit-slider-runnable-track { height: 2px; border-radius: 1px; background: var(--kgs-track); }
+.kgs-range::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; margin-top: -5px; border-radius: 50%; background: var(--kgs-accent); box-shadow: 0 0 10px rgba(var(--kgs-accent-rgb), 0.7); }
+.kgs-range::-moz-range-track { height: 2px; border-radius: 1px; background: var(--kgs-track); }
+.kgs-range::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: var(--kgs-accent); box-shadow: 0 0 10px rgba(var(--kgs-accent-rgb), 0.7); }
+
+/* 镜头按钮 */
+.kgs-views { display: flex; gap: 6px; }
+.kgs-views .kgs-view-button { padding: 6px 12px; border-radius: 9px; font-size: 12px; color: var(--kgs-text-2); background: var(--kgs-overlay); border: 1px solid var(--kgs-border); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); letter-spacing: 0.06em; }
+.kgs-views .kgs-view-button:hover { color: var(--kgs-text); border-color: var(--kgs-border-strong); }
+
+/* 路径 */
+.kgs-paths { display: flex; flex-direction: column; gap: 6px; }
+.kgs-path { border-radius: 10px; transition: background .2s; }
+.kgs-path.kgs-on { background: rgba(var(--kgs-accent-rgb), 0.06); box-shadow: 0 0 0 1px rgba(var(--kgs-accent-rgb), 0.16) inset; }
+.kgs-paths .kgs-path-question { display: block; width: 100%; text-align: left; padding: 10px 12px; border-radius: 10px; font-size: 13px; line-height: 1.55; color: var(--kgs-text-2); }
+.kgs-paths .kgs-path-question:hover, .kgs-path.kgs-on .kgs-path-question { color: var(--kgs-text); }
+.kgs-steps { list-style: none; margin: 0; padding: 0 12px 10px; display: flex; flex-direction: column; gap: 3px; }
+.kgs-step { display: flex; align-items: baseline; gap: 8px; font-size: 13px; color: var(--kgs-text-3); opacity: 0.45; transition: opacity .35s, color .35s; }
+.kgs-step.kgs-lit { opacity: 1; color: var(--kgs-text); }
+.kgs-step.kgs-skipped { opacity: 0.35; text-decoration: line-through; }
+.kgs-step b { font-weight: 500; color: var(--kgs-accent); width: 16px; flex: none; }
+.kgs-step em { margin-left: auto; font-style: normal; font-size: 12px; color: var(--kgs-text-3); }
+
+/* 看变化 */
+.kgs-diff { display: flex; flex-direction: column; gap: 10px; }
+.kgs-diff-families { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 4px 4px 0; font-size: 12px; }
+.kgs-diff-family { display: inline-flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }
+.kgs-diff-family i { width: 7px; height: 7px; border-radius: 50%; }
+.kgs-seg { display: flex; gap: 2px; padding: 3px; border-radius: 9px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--kgs-border); }
+.kgs-seg button { flex: 1; padding: 4px 0; border-radius: 6px; font-size: 12px; color: var(--kgs-text-2); }
+.kgs-seg button[aria-pressed='true'] { color: var(--kgs-text); background: var(--kgs-pressed); }
+.kgs-replay { display: flex; align-items: center; gap: 10px; padding: 0 2px; }
+.kgs-replay .kgs-play { width: 28px; height: 28px; flex: none; border-radius: 50%; font-size: 10px; color: var(--kgs-bg); background: var(--kgs-accent); box-shadow: 0 0 14px rgba(var(--kgs-accent-rgb), 0.5); }
+.kgs-replay .kgs-range { flex: 1; min-width: 0; }
+.kgs-hunks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.kgs-hunks button { width: 100%; display: grid; grid-template-columns: 8px 1fr; column-gap: 10px; align-items: baseline; text-align: left; padding: 8px 10px; border-radius: 8px; font-size: 13px; color: var(--kgs-text-2); transition: background .2s, color .2s; }
+.kgs-hunks button:hover { background: var(--kgs-hover); color: var(--kgs-text); }
+.kgs-hunks button[aria-pressed='true'], .kgs-hunks button.kgs-live { background: var(--kgs-pressed); color: var(--kgs-text); }
+.kgs-hunks i { width: 7px; height: 7px; border-radius: 50%; transform: translateY(-1px); }
+.kgs-hunks em { grid-column: 2; font-style: normal; font-size: 12px; color: var(--kgs-text-3); }
+
+/* 悬停提示 */
+.kgs-tip { position: absolute; pointer-events: none; display: flex; flex-direction: column; gap: 1px; padding: 7px 10px; border-radius: 9px; background: var(--kgs-overlay); border: 1px solid var(--kgs-border-strong); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); font-size: 12px; color: var(--kgs-text-3); white-space: nowrap; }
+.kgs-tip b { font-size: 13px; font-weight: 600; color: var(--kgs-text); }
+
+@media (prefers-reduced-motion: reduce) {
+  .kgs-layer button, .kgs-layer-mark, .kgs-follow, .kgs-switch, .kgs-switch::after, .kgs-path, .kgs-step, .kgs-hunks button { transition: none; }
+}

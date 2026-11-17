@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # devEngines 里的 Node 是 >=22.12：测最低的 22 和当前的 LTS 24
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      # 版本取 package.json 的 packageManager
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm check:pack
+      - run: pnpm build:demo
+      # examples/* 用 workspace:* 链到根目录的 dist/，所以排在 pnpm build 之后
+      - run: pnpm build:examples

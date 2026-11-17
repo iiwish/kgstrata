@@ -1,0 +1,16 @@
+{
+  // 库的类型声明：只编 src/，逐个文件输出 .d.ts 到 dist/（不打成一个文件）。
+  // 逐文件输出是为了让 path/index.d.ts 里的 declare module '../engine' 落在 dist/engine.d.ts 上，
+  // 和 dist/index.d.ts 导出的 StrataView 是同一个声明，增强才成立。
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "types": [],
+    "tsBuildInfoFile": null
+  },
+  "include": ["src"]
+}

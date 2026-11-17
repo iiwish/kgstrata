@@ -1,0 +1,4 @@
+# The library is the root package. The examples link to it with "kgstrata": "workspace:*"
+# and use its built output (dist/), so run `pnpm build` at the root before building them.
+packages:
+  - examples/*

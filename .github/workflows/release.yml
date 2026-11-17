@@ -1,0 +1,38 @@
+name: Release
+
+# 推一个 v* 的标签（比如 v0.1.0）就发布到 npm。标签要和 package.json 的 version 一致。
+# 需要在仓库的 Settings → Secrets 里配 NPM_TOKEN（npm 上的 Automation 或 Granular token）。
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+  # npm 的 provenance：证明这个包是从这个仓库、这次构建发出去的
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - name: 标签和版本号一致
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "标签 $GITHUB_REF_NAME 和 package.json 的版本 $version 对不上"
+            exit 1
+          fi
+      - run: pnpm typecheck
+      - run: pnpm test
+      # prepublishOnly 会再跑一遍 pnpm build 和 pnpm check:pack
+      - run: pnpm publish --no-git-checks --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
