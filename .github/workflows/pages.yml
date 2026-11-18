@@ -1,0 +1,45 @@
+name: Demo
+
+# 把效果页（demo/）部署到 GitHub Pages：https://iiwish.github.io/kgstrata/
+# main 有推送就重新部署；也可以在 Actions 页面手动跑。效果页直接用 src/ 的源码，所以它展示的是 main 上的最新版本
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时间只部署一次；正在部署的那次跑完，排队的只留最新的
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # 产物用相对路径（demo/vite.config.ts 的 base），放在 /kgstrata/ 下也能加载
+      - run: pnpm build:demo
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: demo/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

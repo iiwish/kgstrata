@@ -30,7 +30,7 @@ Demo page query parameters: `?lang=zh|en`, `?layers=2|3|4`, `?stress=3000` (synt
 - `docs/`: documentation. English pages with a `*.zh-CN.md` counterpart. Read `docs/design.md` before changing how things look.
 - `tests/`: tests. Library tests use the fixed data in `tests/fixtures/`, not the demo data; `tests/data.test.ts` covers the demo data.
 - `scripts/check-pack.mjs`: checks on the built package.
-- `.github/workflows/`: `ci.yml` runs the checks below; `release.yml` publishes to npm when a `v*` tag is pushed.
+- `.github/workflows/`: `ci.yml` runs the checks below; `release.yml` publishes to npm when a `v*` tag is pushed; `pages.yml` deploys the demo page to https://iiwish.github.io/kgstrata/ on every push to `main`.
 
 ## Module boundaries
 

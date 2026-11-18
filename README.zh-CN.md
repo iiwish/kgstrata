@@ -1,12 +1,12 @@
 # kgstrata
 
-[English](README.md)
+[English](README.md) · **[在线演示](https://iiwish.github.io/kgstrata/?lang=zh)**
 
 **kgstrata 用 three.js 把多层知识图谱画成 3D：上面是本体图，下面是物理图（表和字段），层间的映射竖着走。**
 
 每一层都是一张图，有自己的关系；层和层之间是多对多的映射（本体落在哪些表上）。画在一个平面上，三种线只能挤在一起。kgstrata 让每张图占一个平面，层内的关系留在平面里，映射走第三个方向。表摆在它所映射的本体下方：对得上的映射互不交叉，对不上的自己显出来。层可以更多（上面加指标，下面加看板），做法一样。
 
-![效果页：指标层、当主角的本体层、下面的物理表](docs/images/panorama.zh-CN.png)
+[![效果页：指标层、当主角的本体层、下面的物理表](docs/images/panorama.zh-CN.png)](https://iiwish.github.io/kgstrata/?lang=zh)
 
 > **状态：早期版本（0.x）。** 小版本之间接口还可能变，见 [CHANGELOG.md](CHANGELOG.md)。
 
@@ -170,7 +170,7 @@ const layout = layoutStrata(resolve(data).resolved) // 位置、对应块、映�
 
 ## 参与
 
-想看效果页：克隆仓库，`pnpm install && pnpm dev`（http://localhost:5207；`?layers=2`、`?layers=4`、`?stress=3000` 换数据；演示数据是一家虚构的网上商城，`?lang=zh` / `?lang=en` 切换中英文）。环境、模块边界、怎么加语言、怎么跑示例见 [CONTRIBUTING.md](CONTRIBUTING.md)。改动记在 [CHANGELOG.md](CHANGELOG.md)。
+效果页在线地址：<https://iiwish.github.io/kgstrata/>（用 `main` 上的代码构建）。想在本地跑：克隆仓库，`pnpm install && pnpm dev`（http://localhost:5207；`?layers=2`、`?layers=4`、`?stress=3000` 换数据；演示数据是一家虚构的网上商城，`?lang=zh` / `?lang=en` 切换中英文）。环境、模块边界、怎么加语言、怎么跑示例见 [CONTRIBUTING.md](CONTRIBUTING.md)。改动记在 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可
 

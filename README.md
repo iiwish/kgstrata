@@ -1,12 +1,12 @@
 # kgstrata
 
-[简体中文](README.zh-CN.md)
+[简体中文](README.zh-CN.md) · **[Live demo](https://iiwish.github.io/kgstrata/?lang=en)**
 
 **kgstrata draws layered knowledge graphs in 3D with three.js: an ontology graph above a physical graph (tables and fields), with the mappings between them running vertically.**
 
 Each layer is a graph with its own relations, and the layers are linked by a many-to-many mapping (which tables each concept lands on). A flat drawing has to mix three kinds of lines in one plane. kgstrata gives each graph its own plane, keeps in-layer relations inside it, and runs the mappings through the third dimension. Tables are placed below the concepts they map to, so mappings that line up do not cross, and the ones that do not line up stand out. More layers (metrics above, dashboards below) work the same way.
 
-![The demo page: a metrics layer, the ontology layer as the hero, and the tables below](docs/images/panorama.png)
+[![The demo page: a metrics layer, the ontology layer as the hero, and the tables below](docs/images/panorama.png)](https://iiwish.github.io/kgstrata/?lang=en)
 
 > **Status: early (0.x).** The API may still change between minor versions; see [CHANGELOG.md](CHANGELOG.md).
 
@@ -170,7 +170,7 @@ Not done yet:
 
 ## Contributing
 
-To see the demo page, clone the repository and run `pnpm install && pnpm dev` (http://localhost:5207; `?layers=2`, `?layers=4`, `?stress=3000` change the data; the demo is a made-up online store, `?lang=en` / `?lang=zh` switches it between English and Chinese). See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, module boundaries, adding a language and running the examples. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+The demo page is online at <https://iiwish.github.io/kgstrata/> (built from `main`). To run it locally, clone the repository and run `pnpm install && pnpm dev` (http://localhost:5207; `?layers=2`, `?layers=4`, `?stress=3000` change the data; the demo is a made-up online store, `?lang=en` / `?lang=zh` switches it between English and Chinese). See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, module boundaries, adding a language and running the examples. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

@@ -22,6 +22,8 @@ export default defineConfig({
   root: fileURLToPath(new URL('.', import.meta.url)),
   plugins: [react()],
   resolve: { alias: KGSTRATA_ALIASES },
+  // 产物里的资源路径用相对的：在线演示部署在 GitHub Pages 的子路径（/kgstrata/）下，放在别的路径下也能用
+  base: './',
   server: { port: 5207, strictPort: true },
   // 产物在 demo/dist/；根目录的 dist/ 是库的
   build: { outDir: 'dist', emptyOutDir: true },
