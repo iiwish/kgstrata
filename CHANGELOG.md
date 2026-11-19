@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Added
+
+- **`auditMappings(data, opts?)`** in `kgstrata/headless`: for two layers (the ontology and the tables), whether each upper relation can be walked through joins below (`joined` with the shortest paths, `unreachable`, `unmapped`), whether each join is accounted for above (`direct`, `via-path`, `unused`), and which nodes have no mapping. Works on everything collapsed; at most `maxHops` joins (3), only the shortest paths (at most `maxPaths`, 3), joins are relations of a `joinTypes` type (`['fk']`), and paths do not pass through unmapped nodes unless `throughUnmapped`. Plain JSON, no three.js. See docs/headless.md ("Audit the mappings"). New error code `audit-layers`.
+
 ### Changed
 
 - **`@kgdiff/layout` is no longer a peer dependency.** `kgstrata/diff` stopped importing it in 0.2.0 (it gives kgdiff its own positions), and `@kgdiff/scene` depends on it, so it is installed anyway. Install `@kgdiff/core`, `@kgdiff/scene` and `@kgdiff/compute`; an existing `@kgdiff/layout` in your `package.json` does no harm.

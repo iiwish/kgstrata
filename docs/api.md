@@ -242,6 +242,7 @@ Framing a path or a single change belongs to the plugins (`path.shot(opts?)`, `d
 | `view-core-key` | a plugin's `ctx.registerView()` with a core key (`heroMix`, `follow`, …) |
 | `view-key-taken` | a plugin's `ctx.registerView()` with a key another plugin registered |
 | `locale-builtin` | `registerLocale('en' \| 'zh-CN', …)` |
+| `audit-layers` | `auditMappings()` with unknown or equal layers, or data with fewer than two layers (`kgstrata/headless`; the message follows `opts.locale`) |
 
 Data problems are not thrown; they are returned by `setData` / `validate` as `DataIssue` (see [data.md](data.md#validation)).
 

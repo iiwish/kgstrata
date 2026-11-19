@@ -35,8 +35,9 @@ npm install kgstrata
 | `stageOf({ radii, mix, secondaryScale?, spread? })` | 按主角的分量算每层的缩放、亮度、高度。 |
 | `scaleAt(d, secondaryScale?)`、`levelAt(d)` | 离主角 `d` 层远的层的缩放和亮度。 |
 | `bridgesOf(layerOf, cross, hidden)` | 穿过隐藏层的连接。 |
+| `auditMappings(data, opts?)` | 上层的每条关系能不能经下层的连接走通，下层的每条连接上层有没有交代，哪些节点没有映射。见[审计映射](#审计映射)。 |
 | `DARK`、`createTheme`、`backdropOf`、`MESSAGES`、`message`、`localeOf`、`DEFAULT_LOCALE`、`StrataError` | 主题和语言的数据。 |
-| 契约的类型 | 输入（`StrataData`、`LayerSpec`、`NodeSpec`、`RelationSpec`、`GroupingSpec`、`GroupSpec`、`NodeStyle`、`NodeShape`、`Attrs`、`AttrValue`、`DataIssue`），和上面这些函数收、交的东西（`Normalized`、`NormalNode`、`NormalRelation`、`Resolved`、`ResolvedLayer`、`ResolvedNode`、`ResolvedEdge`、`ResolvedLink`、`ResolvedGroup`、`StrataLayout`、`StrataLayoutJSON`、`LayoutOptions`、`PlacedNode`、`MappingBlock`、`BlockType`、`LinkClass`、`GroupTerritory`）。每帧画的样子（`Looks`、`NodeLook`、`EdgeLook`、`BaseNode`……）只在 `kgstrata/internals`。 |
+| 契约的类型 | 输入（`StrataData`、`LayerSpec`、`NodeSpec`、`RelationSpec`、`GroupingSpec`、`GroupSpec`、`NodeStyle`、`NodeShape`、`Attrs`、`AttrValue`、`DataIssue`），和上面这些函数收、交的东西（`Normalized`、`NormalNode`、`NormalRelation`、`Resolved`、`ResolvedLayer`、`ResolvedNode`、`ResolvedEdge`、`ResolvedLink`、`ResolvedGroup`、`StrataLayout`、`StrataLayoutJSON`、`LayoutOptions`、`PlacedNode`、`MappingBlock`、`BlockType`、`LinkClass`、`GroupTerritory`，审计的 `AuditOptions`、`MappingAudit`、`RelationAudit`、`JoinAudit`、`JoinPath`）。每帧画的样子（`Looks`、`NodeLook`、`EdgeLook`、`BaseNode`……）只在 `kgstrata/internals`。 |
 
 ## 在 CI 里校验
 
@@ -154,6 +155,31 @@ function toSvg(data: StrataData, layerGap = 70): string {
 节点名、id、颜色都是数据里写什么就是什么。写进 SVG 或 HTML 之前要像上面的 `esc` 那样转义：不转义的话，名字写成 `</title><script>…</script>` 这样的，SVG 内联到页面里或者单独打开时就会执行。
 
 展开的子节点：`project(normalize(data).data, ['tbl:company'])` 得到这张表展开后的图，`placeChildren(收起时的布局, 展开后的图)` 在收起时的布局上补上字段的位置。
+
+## 审计映射
+
+`auditMappings` 回答两层模型的两个问题：本体里的每条关系，在物理层要连哪几张表才能走通；每条外键，本体里有没有说明它为什么在那儿。按全部收起来算：字段之间的映射和外键算在各自的表上。
+
+```ts
+import { auditMappings } from 'kgstrata/headless'
+
+const audit = auditMappings(data) // 上层 'onto'、下层 'table'（相邻两层里映射最多的那一对）
+for (const r of audit.relations) {
+  if (r.status === 'joined') console.log(r.id, r.paths.map((p) => p.nodes.join(' → ')))
+  else console.log(r.id, r.status) // 'unreachable' 或 'unmapped'
+}
+const orphans = audit.joins.filter((j) => j.coverage === 'unused')
+```
+
+规则：
+
+- **走得通。** 上层关系 A–B 是 `joined`：A 映射到的某个下层节点和 B 映射到的某个下层节点之间，最多 `maxHops` 条连接（默认 3）就连得上。两端在同一个节点上是 0 条。连接是下层里 `type` 在 `joinTypes`（默认 `['fk']`）里的关系，不管方向。`unreachable`：两端都有映射，但没有够短的路径。`unmapped`：有一端没映射到任何东西。
+- **只给最短的。** `paths` 是连接最少的那些路径，最多 `maxPaths` 条（默认 3），两端映射的分量大的在前。不拿更长的路径凑数：有了短的，更长的多半是绕路。
+- **没映射的节点不当桥。** 路径不经过上层没有任何东西映射到的下层节点（维表、临时表）：这种表会把不相干的表连起来，把缺口藏住。`throughUnmapped: true` 放开。
+- **连接的覆盖**，每条连接一档：两端映射到的上层节点之间有直接关系是 `direct`（`direct` 列出这些关系）；只被给出的路径走到是 `via-path`（`usedBy`）；都不是就是 `unused`。
+- `unmappedUpper` / `unmappedLower`：这两层之间没有映射的节点。
+
+`upper`、`lower` 指定哪两层（层的 id）；只给一个，另一个取相邻的那层。层不存在或者两个一样，抛 `StrataError('audit-layers')`。结果是纯 JSON。关系和连接的 id 是 `project(normalize(data))` 里的，所以从字段上卷上来的关系，id 是两张表的 `source|type|target`。
 
 ## 穿过隐藏层的连接
 
