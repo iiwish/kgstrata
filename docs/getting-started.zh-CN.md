@@ -20,7 +20,7 @@ npm install kgstrata three
 | 想用 | 另装 |
 |---|---|
 | React 组件（`kgstrata/react`、`kgstrata/react/path`） | `react`、`react-dom`（18 或 19；实测过 18.3 和 19） |
-| 两版对比（`kgstrata/diff`、`kgstrata/react/diff`） | `@kgdiff/core`、`@kgdiff/scene`、`@kgdiff/layout`、`@kgdiff/compute`（`^0.12.3`） |
+| 两版对比（`kgstrata/diff`、`kgstrata/react/diff`） | `@kgdiff/core`、`@kgdiff/scene`、`@kgdiff/compute`（`^0.12.3`） |
 | three 的 TypeScript 类型 | `@types/three`（范围和 `three` 一样） |
 
 类型声明在 `skipLibCheck: false` 下查过：TypeScript 5.2、5.6、7.0 × `@types/three` 0.160、0.170、0.187，`moduleResolution` 分 `bundler` 和 `nodenext`（仓库里的 `pnpm check:types-compat`）。比 5.2 更老的 TypeScript 没试过。
@@ -98,7 +98,7 @@ import.meta.hot?.dispose(() => strata.dispose())
 
 ## 打包工具
 
-核心的几个入口（`kgstrata`、`/path`、`/headless`、`/react`……）是普通的 ESM，下面这些打包工具都不用配置。看变化的入口带着 kgdiff，它用 `new URL('…', import.meta.url)` 找自己的三个 `.wasm` 文件，各打包工具的差别就在这里。表里是用打好的 kgstrata 0.2.0 包和 kgdiff 0.12.3 实测的结果，每种构建都在浏览器里跑过（Vite 6、8 也跑了开发服务器，Next.js 也跑了服务端渲染）：
+核心的几个入口（`kgstrata`、`/path`、`/headless`、`/react`……）是普通的 ESM，下面这些打包工具都不用配置。看变化的入口带着 kgdiff，它用 `new URL('…', import.meta.url)` 找自己的三个 `.wasm` 文件，各打包工具的差别就在这里。表里是用打好的 kgstrata 0.2.0 包和 kgdiff 0.12.3 实测的结果，每种构建都在浏览器里跑过（Vite 6、8 也跑了开发服务器，Next.js 也跑了服务端渲染）。在仓库里用 `pnpm check:bundlers --serve` 可以重跑构建和浏览器里的验收：
 
 | 打包工具 | 核心 | `kgstrata/diff` |
 |---|---|---|

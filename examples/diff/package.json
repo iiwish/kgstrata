@@ -10,7 +10,6 @@
   "dependencies": {
     "@kgdiff/compute": "^0.12.3",
     "@kgdiff/core": "^0.12.3",
-    "@kgdiff/layout": "^0.12.3",
     "@kgdiff/scene": "^0.12.3",
     "kgstrata": "workspace:*",
     "three": "0.187.0"

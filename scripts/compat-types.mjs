@@ -70,7 +70,6 @@ for (const three of THREE) {
     react: '^19.0.0',
     'react-dom': '^19.0.0',
     '@kgdiff/core': '^0.12.3',
-    '@kgdiff/layout': '^0.12.3',
     '@kgdiff/scene': '^0.12.3',
     '@kgdiff/compute': '^0.12.3',
   }

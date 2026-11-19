@@ -4,6 +4,15 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+### Changed
+
+- **`@kgdiff/layout` is no longer a peer dependency.** `kgstrata/diff` stopped importing it in 0.2.0 (it gives kgdiff its own positions), and `@kgdiff/scene` depends on it, so it is installed anyway. Install `@kgdiff/core`, `@kgdiff/scene` and `@kgdiff/compute`; an existing `@kgdiff/layout` in your `package.json` does no harm.
+
+### Internal
+
+- `pnpm check:bundlers` (`scripts/check-bundlers.mjs`): builds the packed package with Vite 8 and 6, webpack 5, Rollup, esbuild, Parcel 2 and Next.js 16 (Turbopack and `--webpack`), checks that kgdiff's three `.wasm` files are in each output, and with `--serve` runs every build in a browser page. Replaces the by-hand bundler check of 0.2.0.
+- The release workflow publishes with npm trusted publishing once it is set up on npmjs.com, and falls back to the `NPM_TOKEN` secret until then (`release.yml`, CONTRIBUTING.md).
+
 ## [0.2.0] - 2026-11-19
 
 0.2.0 cleans up the public API in one go. Almost every item below is a breaking change; see [Migrating from 0.1](#migrating-from-01) for a side-by-side table.

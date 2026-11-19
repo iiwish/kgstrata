@@ -92,7 +92,7 @@ path.play(['onto:person', 'onto:company', 'tbl:company'])
 path.on('step', ({ ids, reached }) => console.log(`${reached}/${ids.length}`))
 ```
 
-**Version comparison** (`kgstrata/diff`, also `npm install @kgdiff/core @kgdiff/scene @kgdiff/layout @kgdiff/compute`; adds three WebAssembly files, about 1.9 MB):
+**Version comparison** (`kgstrata/diff`, also `npm install @kgdiff/core @kgdiff/scene @kgdiff/compute`; adds three WebAssembly files, about 1.9 MB):
 
 ```ts
 import { diffPlugin } from 'kgstrata/diff'
