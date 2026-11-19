@@ -35,6 +35,7 @@ const EN = {
   'error.view-key-taken': 'View key {key} is already registered by another plugin',
   'error.webgl-unavailable': 'WebGL is not available in this browser or environment, so the 3D view cannot be created',
   'error.locale-builtin': 'Locale {locale} is built in and cannot be registered again; use the messages option to override single texts',
+  'error.audit-layers': 'Cannot audit mappings between layers "{upper}" and "{lower}": give two different layers that exist (or leave both out with at least two layers)',
   // ── 布局：注入的布局用不了时的问题（DataIssue.message） ──
   'issue.layout-incomplete': 'The injected layout is missing {count} node(s) (first: {node}) or does not match the layers; the layout was computed instead',
   // ── 开发时的提醒（console.warn） ──
@@ -102,6 +103,7 @@ const ZH_CN: Record<MessageKey, string> = {
   'error.view-key-taken': '视图状态的 {key} 已经有插件登记了',
   'error.webgl-unavailable': '这个浏览器（或环境）拿不到 WebGL，画不了 3D 图',
   'error.locale-builtin': '语言 {locale} 是内置的，不能再登记；要改个别文案请用 messages 选项',
+  'error.audit-layers': '审计不了“{upper}”和“{lower}”这两层之间的映射：要给两个存在而且不同的层（或者都不给，数据里至少要有两层）',
   'issue.layout-incomplete': '注入的布局缺了 {count} 个节点（第一个是 {node}），或者和层对不上；改为自己算布局',
   'warn.canvas-zero-height': 'kgstrata：<StrataCanvas> 的高度是 0，什么都看不见。给它（或它的父元素）一个高度',
   'label.related': '关联',

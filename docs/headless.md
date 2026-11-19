@@ -35,8 +35,9 @@ npm install kgstrata
 | `stageOf({ radii, mix, secondaryScale?, spread? })` | Per-layer scale, brightness and height for a hero weighting. |
 | `scaleAt(d, secondaryScale?)`, `levelAt(d)` | Scale and brightness of a layer `d` steps from the hero. |
 | `bridgesOf(layerOf, cross, hidden)` | Connections across hidden layers. |
+| `auditMappings(data, opts?)` | Whether each relation of the upper layer can be walked through joins of the lower layer, whether each join is accounted for above, and which nodes have no mapping. See [Audit the mappings](#audit-the-mappings). |
 | `DARK`, `createTheme`, `backdropOf`, `MESSAGES`, `message`, `localeOf`, `DEFAULT_LOCALE`, `StrataError` | Theme and language data. |
-| the contract types | The input (`StrataData`, `LayerSpec`, `NodeSpec`, `RelationSpec`, `GroupingSpec`, `GroupSpec`, `NodeStyle`, `NodeShape`, `Attrs`, `AttrValue`, `DataIssue`) and what the functions above take and return (`Normalized`, `NormalNode`, `NormalRelation`, `Resolved`, `ResolvedLayer`, `ResolvedNode`, `ResolvedEdge`, `ResolvedLink`, `ResolvedGroup`, `StrataLayout`, `StrataLayoutJSON`, `LayoutOptions`, `PlacedNode`, `MappingBlock`, `BlockType`, `LinkClass`, `GroupTerritory`). The per-frame render types (`Looks`, `NodeLook`, `EdgeLook`, `BaseNode`, …) are only in `kgstrata/internals`. |
+| the contract types | The input (`StrataData`, `LayerSpec`, `NodeSpec`, `RelationSpec`, `GroupingSpec`, `GroupSpec`, `NodeStyle`, `NodeShape`, `Attrs`, `AttrValue`, `DataIssue`) and what the functions above take and return (`Normalized`, `NormalNode`, `NormalRelation`, `Resolved`, `ResolvedLayer`, `ResolvedNode`, `ResolvedEdge`, `ResolvedLink`, `ResolvedGroup`, `StrataLayout`, `StrataLayoutJSON`, `LayoutOptions`, `PlacedNode`, `MappingBlock`, `BlockType`, `LinkClass`, `GroupTerritory`, and for the audit `AuditOptions`, `MappingAudit`, `RelationAudit`, `JoinAudit`, `JoinPath`). The per-frame render types (`Looks`, `NodeLook`, `EdgeLook`, `BaseNode`, …) are only in `kgstrata/internals`. |
 
 ## Validate in CI
 
@@ -154,6 +155,31 @@ function toSvg(data: StrataData, layerGap = 70): string {
 Labels, ids and colors are whatever the data says. Escape them, as `esc` does above, before you put them into SVG or HTML: an unescaped label such as `</title><script>…</script>` would run when the SVG is inlined into a page or opened on its own.
 
 Expanded children: `project(normalize(data).data, ['tbl:company'])` gives the graph with that table open, and `placeChildren(collapsedLayout, projected)` adds the field positions to the collapsed layout.
+
+## Audit the mappings
+
+`auditMappings` answers the two questions of a two-layer model: for each relation of the ontology, which tables can you join to follow it; and for each foreign key, does the ontology say why it is there. It works on everything collapsed: mappings and foreign keys between fields count for their tables.
+
+```ts
+import { auditMappings } from 'kgstrata/headless'
+
+const audit = auditMappings(data) // upper 'onto', lower 'table' (the adjacent pair with the most mappings)
+for (const r of audit.relations) {
+  if (r.status === 'joined') console.log(r.id, r.paths.map((p) => p.nodes.join(' → ')))
+  else console.log(r.id, r.status) // 'unreachable' or 'unmapped'
+}
+const orphans = audit.joins.filter((j) => j.coverage === 'unused')
+```
+
+The rules:
+
+- **Walkable.** An upper relation A–B is `joined` when some lower node A maps onto and some lower node B maps onto are connected by at most `maxHops` joins (default 3). Both on the same node is 0 joins. Joins are relations of the lower layer whose `type` is in `joinTypes` (default `['fk']`), in either direction. `unreachable`: both ends are mapped, no path is short enough. `unmapped`: an end maps onto nothing.
+- **Only the shortest paths.** `paths` holds the paths with the fewest joins, at most `maxPaths` (default 3), heaviest mappings first (the weight is the mapping weight at each end). Longer paths are not added to fill up: once a short one exists, longer ones are mostly detours.
+- **No unmapped bridges.** A path does not pass through a lower node that nothing above maps onto (a dimension table, a staging table): such tables join unrelated tables and would hide gaps. `throughUnmapped: true` allows it.
+- **Join coverage**, for each join: `direct` when nodes mapped onto its two ends are related above (`direct` lists those relations); `via-path` when it is only walked by a reported path (`usedBy`); `unused` otherwise.
+- `unmappedUpper` / `unmappedLower`: nodes with no mapping between the two layers.
+
+`upper` and `lower` pick the layers (layer ids); giving one takes the adjacent layer for the other. Unknown or equal layers throw `StrataError('audit-layers')`. The result is plain JSON. Relation and join ids are those of `project(normalize(data))`, so a relation rolled up from fields has the id `source|type|target` of its tables.
 
 ## Bridges across hidden layers
 

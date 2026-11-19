@@ -242,6 +242,7 @@ type ShotName = 'overview' | 'top' | 'layer'
 | `view-core-key` | 插件的 `ctx.registerView()` 用了核心的项（`heroMix`、`follow`……） |
 | `view-key-taken` | 插件的 `ctx.registerView()` 用了别的插件登记过的项 |
 | `locale-builtin` | `registerLocale('en' \| 'zh-CN', …)` |
+| `audit-layers` | `auditMappings()` 给的层不存在或者两个一样，或者数据不到两层（`kgstrata/headless`；文案跟着 `opts.locale`） |
 
 数据的问题不抛，由 `setData` / `validate` 作为 `DataIssue` 返回（见 [data.zh-CN.md](data.zh-CN.md#校验)）。
 
