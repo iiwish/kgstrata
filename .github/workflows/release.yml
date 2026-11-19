@@ -1,8 +1,13 @@
 name: Release
 
 # 推一个 v* 的标签（比如 v0.1.0）就发布到 npm，发布成功后建对应的 GitHub Release（正文取 CHANGELOG.md 里这个版本的那一节）。
-# 标签要和 package.json 的 version 一致。需要在仓库的 Settings → Secrets 里配 NPM_TOKEN（npm 上的 Automation 或 Granular token）；
-# 建 Release 用的是工作流自带的 GITHUB_TOKEN（要 contents: write）。
+# 标签要和 package.json 的 version 一致。建 Release 用的是工作流自带的 GITHUB_TOKEN（要 contents: write）。
+#
+# 发到 npm 的凭据，pnpm publish 按顺序试：
+# 1. 受信发布（OIDC，不用存令牌）：在 npmjs.com 上这个包的 Settings → Trusted publishing 里加 GitHub Actions，
+#    仓库 iiwish/kgstrata、工作流文件 release.yml。下面的 id-token: write 就是给它的。
+# 2. 没配受信发布时退回 NPM_TOKEN（仓库 Settings → Secrets 里的 Automation 或 Granular token），日志里会有一行
+#    "Skipped OIDC"。配好受信发布、发过一版确认能用以后，就可以删掉这个 secret 和下面的 NODE_AUTH_TOKEN。
 on:
   push:
     tags: ['v*']

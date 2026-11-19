@@ -16,6 +16,7 @@ pnpm check:pack      # checks the build output and the package contents (run bui
 pnpm build:demo      # demo page: demo/dist/
 pnpm build:examples  # type-checks and builds examples/* (run build first)
 pnpm check:types-compat  # optional, needs network: type-checks the packed package on several TypeScript × @types/three versions (run build first)
+pnpm check:bundlers      # optional, needs network: builds the packed package with Vite, webpack, Rollup, esbuild, Parcel and Next.js (run build first)
 ```
 
 Before sending a change, run `pnpm typecheck && pnpm test && pnpm build && pnpm check:pack && pnpm build:examples`. CI runs the same commands on Node 22 and 24.
@@ -30,7 +31,7 @@ Demo page query parameters: `?lang=zh|en`, `?layers=2|3|4`, `?stress=3000` (synt
 - `examples/`: small standalone apps, pnpm workspace packages linked to the root's `dist/`.
 - `docs/`: documentation. English pages with a `*.zh-CN.md` counterpart. Read `docs/design.md` before changing how things look.
 - `tests/`: tests. Library tests use the fixed data in `tests/fixtures/`, not the demo data; `tests/data.test.ts` covers the demo data.
-- `scripts/check-pack.mjs`: checks on the built package. `scripts/compat-types.mjs` (`pnpm check:types-compat`): packs the library, installs it in a temporary directory with TypeScript 5.2 / 5.6 / latest × `@types/three` 0.160 / 0.170 / 0.187 and type-checks every entry with `skipLibCheck: false` under `moduleResolution` `bundler` and `nodenext`. It needs network and takes a few minutes, so it is not part of CI; run it before a release and when you touch exported types. A combination that fails only because `@types/three` itself does not compile with that TypeScript is reported separately (a control file importing only `three` fails too).
+- `scripts/check-pack.mjs`: checks on the built package. `scripts/compat-types.mjs` (`pnpm check:types-compat`): packs the library, installs it in a temporary directory with TypeScript 5.2 / 5.6 / latest × `@types/three` 0.160 / 0.170 / 0.187 and type-checks every entry with `skipLibCheck: false` under `moduleResolution` `bundler` and `nodenext`. It needs network and takes a few minutes, so it is not part of CI; run it before a release and when you touch exported types. A combination that fails only because `@types/three` itself does not compile with that TypeScript is reported separately (a control file importing only `three` fails too). `scripts/check-bundlers.mjs` (`pnpm check:bundlers`): installs the packed library (strict pnpm) into one small project per bundler (Vite 8 and 6, webpack 5, Rollup with `importMetaAssets()`, esbuild with the `wasm` option, Parcel 2 with `packageExports`, Next.js 16 with Turbopack and with `--webpack`, statically exported), builds each and checks that kgdiff's three `.wasm` files are in the output. With `--serve` it then serves all builds and a summary page that runs each one in an iframe (core, path, headless, version comparison) and lists `ok` / `err` per bundler; open it in a browser. `--only vite8,webpack5` picks bundlers; `--dir <path> --serve --skip-build` serves an earlier build again. It needs network and several minutes; run it before a release and when you touch how the diff entry loads kgdiff.
 - `.github/workflows/`: `ci.yml` runs the checks below; `release.yml` publishes to npm when a `v*` tag is pushed; `pages.yml` deploys the demo page to https://iiwish.github.io/kgstrata/ on every push to `main`.
 
 ## Module boundaries
@@ -124,12 +125,12 @@ Comments explain why, not what the code does.
 
 Releases are cut from `main` with a tag; the workflow does the rest.
 
-1. Make sure the checks pass locally, including the optional ones: `pnpm typecheck && pnpm test && pnpm build && pnpm check:pack && pnpm build:demo && pnpm build:examples && pnpm check:types-compat`.
+1. Make sure the checks pass locally, including the optional ones: `pnpm typecheck && pnpm test && pnpm build && pnpm check:pack && pnpm build:demo && pnpm build:examples && pnpm check:types-compat`, and `pnpm check:bundlers --serve` with every row `ok` on its page.
 2. Set `version` in `package.json` to the new `x.y.z` (for 0.x, breaking changes bump `y`).
 3. In `CHANGELOG.md`, rename `## [Unreleased]` to `## [x.y.z] - YYYY-MM-DD`, add a new empty `## [Unreleased]` above it, and update the links at the bottom (`[Unreleased]: …compare/vx.y.z...HEAD`, `[x.y.z]: …releases/tag/vx.y.z`).
 4. Commit (`Release x.y.z`), push to `main`, then tag and push the tag: `git tag vx.y.z && git push origin vx.y.z`.
 5. `.github/workflows/release.yml` runs on the `v*` tag. It checks that the tag matches `version` and that `CHANGELOG.md` has a non-empty `## [x.y.z]` section (the release fails before publishing otherwise), runs `typecheck` and `test`, publishes to npm with provenance (`prepublishOnly` runs `build` and `check:pack` again), and then creates the GitHub Release `vx.y.z` with that CHANGELOG section as its notes (`gh release create`, using the workflow's `GITHUB_TOKEN` with `contents: write`).
 
-Publishing needs an `NPM_TOKEN` secret in the repository. If publishing fails, no GitHub Release is created; fix the cause, delete the tag (`git push --delete origin vx.y.z`) and push it again. If only the Release step failed, create it by hand with the same section.
+Publishing uses npm trusted publishing (OIDC) when it is set up for the package on npmjs.com (GitHub Actions, repository `iiwish/kgstrata`, workflow `release.yml`), and otherwise the `NPM_TOKEN` secret in the repository; `release.yml` says how to switch. If publishing fails, no GitHub Release is created; fix the cause, delete the tag (`git push --delete origin vx.y.z`) and push it again. If only the Release step failed, create it by hand with the same section.
 
 `publishConfig.registry` pins publishing to the public npm registry, so a mirror configured in your global `.npmrc` does not matter.

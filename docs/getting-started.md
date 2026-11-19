@@ -20,7 +20,7 @@ Optional extras:
 | You want | Also install |
 |---|---|
 | React components (`kgstrata/react`, `kgstrata/react/path`) | `react`, `react-dom` (18 or 19; 18.3 and 19 are tested) |
-| Version comparison (`kgstrata/diff`, `kgstrata/react/diff`) | `@kgdiff/core`, `@kgdiff/scene`, `@kgdiff/layout`, `@kgdiff/compute` (`^0.12.3`) |
+| Version comparison (`kgstrata/diff`, `kgstrata/react/diff`) | `@kgdiff/core`, `@kgdiff/scene`, `@kgdiff/compute` (`^0.12.3`) |
 | TypeScript types for three | `@types/three` (same range as `three`) |
 
 The type declarations are checked with `skipLibCheck: false` on TypeScript 5.2, 5.6 and 7.0 × `@types/three` 0.160, 0.170 and 0.187, with `moduleResolution` `bundler` and `nodenext` (`pnpm check:types-compat` in the repository). TypeScript older than 5.2 has not been tried.
@@ -98,7 +98,7 @@ import.meta.hot?.dispose(() => strata.dispose())
 
 ## Bundlers
 
-The core entries (`kgstrata`, `/path`, `/headless`, `/react`…) are plain ESM and need no configuration anywhere below. The diff entry pulls in kgdiff, which finds its three `.wasm` files with `new URL('…', import.meta.url)`; that is what differs between bundlers. The table was checked with the packed kgstrata 0.2.0 and kgdiff 0.12.3, each build run in a browser (Vite 6 and 8 also with their dev servers, Next.js with server rendering):
+The core entries (`kgstrata`, `/path`, `/headless`, `/react`…) are plain ESM and need no configuration anywhere below. The diff entry pulls in kgdiff, which finds its three `.wasm` files with `new URL('…', import.meta.url)`; that is what differs between bundlers. The table was checked with the packed kgstrata 0.2.0 and kgdiff 0.12.3, each build run in a browser (Vite 6 and 8 also with their dev servers, Next.js with server rendering). In the repository, `pnpm check:bundlers --serve` repeats the builds and the browser run:
 
 | Bundler | Core | `kgstrata/diff` |
 |---|---|---|

@@ -69,10 +69,10 @@ Compares two versions of the data with [kgdiff](https://github.com/iiwish/kgdiff
 Extra install:
 
 ```sh
-npm install @kgdiff/core @kgdiff/scene @kgdiff/layout @kgdiff/compute
+npm install @kgdiff/core @kgdiff/scene @kgdiff/compute
 ```
 
-`@kgdiff/compute` (kgdiff's WebAssembly engine) is a dependency of `@kgdiff/core` too, but `kgstrata/diff` imports it too (with a dynamic `import()` that only runs when you pass `wasm`, below), bundlers resolve that import at build time, and strict package managers (pnpm) only resolve packages you list yourself. kgdiff ships three WebAssembly files (about 1.9 MB together). Vite 8, webpack 5 and Next.js need no configuration; for the others see [Bundlers](getting-started.md#bundlers).
+`@kgdiff/compute` (kgdiff's WebAssembly engine) is a dependency of `@kgdiff/core` too, but `kgstrata/diff` imports it too (with a dynamic `import()` that only runs when you pass `wasm`, below), bundlers resolve that import at build time, and strict package managers (pnpm) only resolve packages you list yourself. `@kgdiff/layout` comes with `@kgdiff/scene` and kgstrata does not import it, so you do not list it (0.2 asked for it). kgdiff ships three WebAssembly files (about 1.9 MB together). Vite 8, webpack 5 and Next.js need no configuration; for the others see [Bundlers](getting-started.md#bundlers).
 
 ```ts
 import { Strata } from 'kgstrata'

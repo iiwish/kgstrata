@@ -8,7 +8,7 @@ Four small, self-contained apps. Each has its own `package.json`, `tsconfig.json
 |---|---|---|
 | [`vanilla`](vanilla) | `new Strata()` + `setData`, no framework, no kgdiff | — |
 | [`react`](react) | `<StrataCanvas>` with `<LayerList>` and `<NodeTip>` | `react`, `react-dom`, `@vitejs/plugin-react` |
-| [`diff`](diff) | Version comparison with `kgstrata/diff` and a hand-written panel | `@kgdiff/core`, `@kgdiff/scene`, `@kgdiff/layout`, `@kgdiff/compute` |
+| [`diff`](diff) | Version comparison with `kgstrata/diff` and a hand-written panel | `@kgdiff/core`, `@kgdiff/scene`, `@kgdiff/compute` |
 | [`plugin`](plugin) | Two custom plugins: an overlay (highlight one node type) and a take-over mode (one node and its neighbours), both in [docs/plugins.md](../docs/plugins.md#writing-a-plugin) | — |
 
 ## Run inside this repository
@@ -45,7 +45,7 @@ Then `npm install && npm run dev`. Nothing else in the examples depends on the r
 |---|---|---|
 | [`vanilla`](vanilla) | `new Strata()` + `setData`，不用框架，不装 kgdiff | — |
 | [`react`](react) | `<StrataCanvas>` 加 `<LayerList>`、`<NodeTip>` | `react`、`react-dom`、`@vitejs/plugin-react` |
-| [`diff`](diff) | 用 `kgstrata/diff` 对比两版，面板是手写的 | `@kgdiff/core`、`@kgdiff/scene`、`@kgdiff/layout`、`@kgdiff/compute` |
+| [`diff`](diff) | 用 `kgstrata/diff` 对比两版，面板是手写的 | `@kgdiff/core`、`@kgdiff/scene`、`@kgdiff/compute` |
 | [`plugin`](plugin) | 自己写的两个插件：一个叠加层（高亮某一类节点），一个接管模式（只看一个节点和它的邻居），都在 [docs/plugins.zh-CN.md](../docs/plugins.zh-CN.md) 里 | — |
 
 在本仓库里跑：示例是 pnpm workspace 的包，依赖写的是 `"kgstrata": "workspace:*"`，链接到仓库根目录，用的是 `dist/` 里**构建好的**产物，所以先构建库。

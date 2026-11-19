@@ -93,7 +93,8 @@
     "check:pack": "node scripts/check-pack.mjs",
     "build:examples": "pnpm --filter \"./examples/*\" -r run typecheck && pnpm --filter \"./examples/*\" -r run build",
     "prepublishOnly": "pnpm build && pnpm check:pack",
-    "check:types-compat": "node scripts/compat-types.mjs"
+    "check:types-compat": "node scripts/compat-types.mjs",
+    "check:bundlers": "node scripts/check-bundlers.mjs"
   },
   "dependencies": {
     "d3-force": "3.0.1"
@@ -101,7 +102,6 @@
   "peerDependencies": {
     "@kgdiff/compute": "^0.12.3",
     "@kgdiff/core": "^0.12.3",
-    "@kgdiff/layout": "^0.12.3",
     "@kgdiff/scene": "^0.12.3",
     "@types/three": ">=0.154.0 <0.200.0",
     "react": "^18.0.0 || ^19.0.0",
@@ -113,9 +113,6 @@
       "optional": true
     },
     "@kgdiff/core": {
-      "optional": true
-    },
-    "@kgdiff/layout": {
       "optional": true
     },
     "@kgdiff/scene": {
@@ -134,7 +131,6 @@
   "devDependencies": {
     "@kgdiff/compute": "0.12.3",
     "@kgdiff/core": "0.12.3",
-    "@kgdiff/layout": "0.12.3",
     "@kgdiff/scene": "0.12.3",
     "@types/d3-force": "3.0.10",
     "@types/react": "^19.0.0",

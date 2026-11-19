@@ -69,10 +69,10 @@ strata.setView({ path: null })                            // 清掉
 要另装：
 
 ```sh
-npm install @kgdiff/core @kgdiff/scene @kgdiff/layout @kgdiff/compute
+npm install @kgdiff/core @kgdiff/scene @kgdiff/compute
 ```
 
-`@kgdiff/compute`（kgdiff 的 WebAssembly 引擎）也是 `@kgdiff/core` 的依赖，但 `kgstrata/diff` 也引入它（动态 `import()`，只在给了 `wasm` 时才执行，见下）；打包工具在构建时就要解析这个引入，而严格的包管理器（pnpm）只解析你自己列出来的包。kgdiff 带三个 WebAssembly 文件（共约 1.9 MB）。Vite 8、webpack 5、Next.js 不用配置；别的见[打包工具](getting-started.zh-CN.md#打包工具)。
+`@kgdiff/compute`（kgdiff 的 WebAssembly 引擎）也是 `@kgdiff/core` 的依赖，但 `kgstrata/diff` 也引入它（动态 `import()`，只在给了 `wasm` 时才执行，见下）；打包工具在构建时就要解析这个引入，而严格的包管理器（pnpm）只解析你自己列出来的包。`@kgdiff/layout` 随 `@kgdiff/scene` 一起装上，kgstrata 不引入它，所以不用自己列（0.2 要求装它）。kgdiff 带三个 WebAssembly 文件（共约 1.9 MB）。Vite 8、webpack 5、Next.js 不用配置；别的见[打包工具](getting-started.zh-CN.md#打包工具)。
 
 ```ts
 import { Strata } from 'kgstrata'
