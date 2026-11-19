@@ -75,19 +75,25 @@ There is no limit on the number of layers. Two is the core case (ontology over t
 
 Built-in styles for `type` (`DEFAULT_NODE_STYLES`):
 
-| `type` | Shape | Monospace label |
-|---|---|---|
-| `relation` | `octa` (diamond) | no |
-| `table` | `tablet` | yes |
-| `field` | `tablet` | yes |
-| `metric` | `prism` | no |
-| `document` | `page` | no |
-| anything else | `bead` (round) | no |
+| `type` | Shape | Monospace label | Children called |
+|---|---|---|---|
+| `relation` | `octa` (diamond) | no | — |
+| `table` | `tablet` | yes | fields / 字段 |
+| `field` | `tablet` | yes | — |
+| `metric` | `prism` | no | — |
+| `document` | `page` | no | — |
+| anything else | `bead` (round) | no | — |
 
-Add or override styles with the `nodeStyles` option. Shapes are `'bead' | 'octa' | 'tablet' | 'prism' | 'page'`.
+Add or override styles with the `nodeStyles` option. Shapes are `'bead' | 'octa' | 'tablet' | 'prism' | 'page'`. `childNoun` names what a node of that type contains, for the tooltip ("22 fields · double-click to expand"): a word, or a record by language looked up along the fallback chain. Without it the tooltip says "22 inside · double-click to expand".
 
 ```ts
-new Strata(host, { nodeStyles: { board: { shape: 'page' }, column: { shape: 'tablet', mono: true } } })
+new Strata(host, {
+  nodeStyles: {
+    board: { shape: 'page' },
+    column: { shape: 'tablet', mono: true },
+    entity: { childNoun: { en: 'attributes', 'zh-CN': '属性' } },
+  },
+})
 ```
 
 ### Relations: `RelationSpec`
@@ -111,7 +117,7 @@ interface GroupSpec { id: string; name: string; color?: string /* #rrggbb */ }
 
 - Each layer uses one grouping (`layer.grouping`, default: the first). A node's colour comes from its group in that grouping; nodes without a group get a neutral colour.
 - The anchor layer is divided into sectors, one per group of its grouping. Nodes of the same group sit together, so a colour covers an area instead of being scattered.
-- Group ids only need to be unique inside their grouping. Internally a group is `"<grouping>/<group>"`; `highlightGroup()` and `getView().group` accept and return that full form (a bare group id also works in `highlightGroup` when it is unambiguous).
+- Group ids only need to be unique inside their grouping. Internally a group is `"<grouping>/<group>"`; `highlightGroup()` and `strata.group` accept and return that full form (a bare group id also works in `highlightGroup` when it is unambiguous).
 - Groups without `color` take colours from `theme.palette` in order.
 
 ## Containment and roll-up
@@ -136,7 +142,7 @@ Details of a rolled-up relation:
 
 - its id is `` `${drawnSource}|${type ?? ''}|${drawnTarget}` ``, and `members` lists the ids of the original relations;
 - `primary` is set if any member was primary;
-- `attrs` are not carried over (they belong to the individual relations).
+- `attrs` are **not** carried over: they belong to the individual relations, and merging them would be guesswork. The rolled-up relation has no `attrs`; read the originals through `members` (in `normalize(data).data.relations`), or expand the node to draw them. Version comparison of a collapsed table therefore reports changed `attrs` only once the table is expanded.
 
 ## Weight and the primary mapping
 
@@ -163,11 +169,11 @@ interface DataIssue {
 }
 ```
 
-`error` usually means the item cannot be used and is dropped. `warning` means the item is used but is probably a mistake. The table lists exactly what `normalize` (and therefore `setData`) does with each case.
+`error` means something cannot be used: with an `id`, that item is dropped; without one (`version`), the whole input is unusable. `warning` means the item is used but is probably a mistake. The table lists exactly what `normalize` (and therefore `setData`) does with each case.
 
 | `code` | Level | When | What happens |
 |---|---|---|---|
-| `version` | error | `version` is not `2`. | Nothing is dropped; the rest is processed as usual. No `id`. |
+| `version` | error | `version` is not `2`. | The whole input is unusable: `normalize` returns an empty graph and `setData` draws nothing, keeps the previous data and returns the issues. No `id` (`isFatal(issue)` is `true`). |
 | `duplicate-grouping` | warning | Two groupings share an id. | The later one is ignored. |
 | `duplicate-group` | warning | Two groups in one grouping share an id. | The later one is ignored. `id` is the group id. |
 | `duplicate-layer` | error | Two layers share an id. | The later one is dropped. |

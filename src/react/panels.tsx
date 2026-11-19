@@ -3,38 +3,38 @@
 // 实例从 props 拿（strata），不给就用最近的 <StrataCanvas> / <StrataProvider> 的。字跟着实例的 locale，也可以用 locale 盖掉。
 
 import { useState, type CSSProperties } from 'react'
-import type { HeroInfo, HoverInfo, LayerInfo, Strata } from '../engine.js'
-import { message, type Locale } from '../locale.js'
-import { useLocale, useStrataEvent, useStrataOr, useStrataState } from './context.js'
-import { cx, heroPair, isDual, layerClickTarget, layerMarkOpacity, layerPressed } from './store.js'
+import type { HeroInfo, HoverInfo, LayerInfo, Strata } from '../engine/index.js'
+import type { Locale } from '../locale.js'
+import { useStrataEvent, useStrataOr, useStrataState, useText } from './context.js'
+import { cx, heroPair, isDual, layerClickTarget, layerCount, layerMarkOpacity, layerPressed, tipLines } from './store.js'
 
-/** 每个面板都认的几项 */
+/** Props every panel takes. */
 export interface PanelProps {
-  /** 用哪个实例；不给用上下文里的 */
+  /** The instance; default: the one from context (`<StrataCanvas>` / `<StrataProvider>`). */
   strata?: Strata | null
-  /** 界面文字的语言；不给跟实例的 locale */
+  /** Language of the panel's text; default: the instance's `locale`. */
   locale?: Locale
   className?: string
   style?: CSSProperties
 }
 
-/** 层 id → 数（Record 或 Map 都行） */
+/** Layer id → number (a `Record` or a `Map`). */
 export type LayerCounts = Readonly<Record<string, number>> | ReadonlyMap<string, number>
 
-const countOf = (c: LayerCounts | undefined, id: string): number | undefined => (c instanceof Map ? c.get(id) : (c as Record<string, number> | undefined)?.[id])
+const countOf = (c: LayerCounts | undefined, id: string): number | undefined => (c instanceof Map ? c.get(id) : c && Object.hasOwn(c, id) ? (c as Record<string, number>)[id] : undefined)
 
 // ─── 层列表 ──────────────────────────────────────────────────────────────────
 
 export interface LayerListProps extends PanelProps {
-  /** 每层右边的数（比如节点数） */
-  counts?: LayerCounts
-  /** 每层的徽标（比如这一层有几处变化）。缺省只在层隐藏着时出：不能悄悄藏掉 */
+  /** The number at the right of each row. Default: the layer's top-level node count (`LayerInfo.count`); `false` for none. */
+  counts?: LayerCounts | false
+  /** A badge per layer (for example the number of changes in it). By default shown only while the layer is hidden, so nothing disappears silently. */
   badges?: LayerCounts
-  /** 徽标什么时候出：'hidden'（缺省）只在隐藏时，'always' 一直 */
+  /** When badges show: `'hidden'` (default) only while hidden, `'always'` always. */
   badgeWhen?: 'hidden' | 'always'
-  /** 徽标的提示；缺省是“这一层有 N 处变化” */
+  /** Badge tooltip; default "N changes in this layer". */
   badgeTitle?: (n: number, layer: LayerInfo) => string
-  /** 不看实例，直接给这几项（服务端渲染、测试） */
+  /** Give the layers directly instead of reading the instance (server rendering, tests). */
   layers?: LayerInfo[]
   hero?: HeroInfo | null
   focus?: string | null
@@ -51,25 +51,23 @@ function Eye({ open }: { open: boolean }) {
   )
 }
 
-/**
- * 层列表：点一行，几张图并存时让它当主角，只有一张图时聚焦（再点一次放开）；眼睛按钮显示、隐藏这一层。
- */
+/** Layer list. Clicking a row makes it the hero with several layers, or focuses it with one (click again to release); the eye button shows or hides the layer. */
 export function LayerList(props: LayerListProps) {
   const strata = useStrataOr(props.strata)
-  const locale = useLocale(strata, props.locale)
+  const t = useText(strata, props.locale)
   const liveLayers = useStrataState(strata, 'layers')
   const liveHero = useStrataState(strata, 'hero')
   const liveFocus = useStrataState(strata, 'focus')
   const layers = props.layers ?? liveLayers
   const hero = props.hero !== undefined ? props.hero : liveHero
   const focus = props.focus !== undefined ? props.focus : liveFocus
-  const badgeTitle = props.badgeTitle ?? ((n: number) => message(locale, 'ui.layer-changes', { n }))
+  const badgeTitle = props.badgeTitle ?? ((n: number) => t('ui.layer-changes', { n }))
   return (
-    <ol className={cx('kgs-layer-list', props.className)} style={props.style} aria-label={message(locale, 'ui.layers')}>
+    <ol className={cx('kgs-layer-list', props.className)} style={props.style} aria-label={t('ui.layers')}>
       {layers.map((l) => {
         const visible = l.visible
         const badge = countOf(props.badges, l.id) ?? 0
-        const count = countOf(props.counts, l.id)
+        const count = layerCount(props.counts, l)
         const showBadge = badge > 0 && (props.badgeWhen === 'always' || !visible)
         return (
           <li key={l.id} className={cx('kgs-layer', !visible && 'kgs-off')}>
@@ -93,8 +91,8 @@ export function LayerList(props: LayerListProps) {
               type="button"
               className="kgs-layer-eye"
               aria-pressed={visible}
-              aria-label={message(locale, visible ? 'ui.layer-hide' : 'ui.layer-show', { layer: l.name })}
-              title={message(locale, visible ? 'ui.layer-hide-title' : 'ui.layer-show-title')}
+              aria-label={t(visible ? 'ui.layer-hide' : 'ui.layer-show', { layer: l.name })}
+              title={t(visible ? 'ui.layer-hide-title' : 'ui.layer-show-title')}
               onClick={() => strata?.setLayerVisible(l.id, !visible)}
             >
               <Eye open={visible} />
@@ -112,10 +110,10 @@ export interface FollowToggleProps extends PanelProps {
   hero?: HeroInfo | null
 }
 
-/** 开关“主角跟着选中和路径走”。只有一张图（不分主次）时不出 */
+/** Toggles "the hero follows the selection and the path" (`setFollow`). Not shown with a single layer. */
 export function FollowToggle(props: FollowToggleProps) {
   const strata = useStrataOr(props.strata)
-  const locale = useLocale(strata, props.locale)
+  const t = useText(strata, props.locale)
   const live = useStrataState(strata, 'hero')
   const hero = props.hero !== undefined ? props.hero : live
   if (!isDual(hero)) return null
@@ -125,11 +123,11 @@ export function FollowToggle(props: FollowToggleProps) {
       className={cx('kgs-follow', props.className)}
       style={props.style}
       aria-pressed={hero.follow}
-      title={message(locale, 'ui.follow-title')}
-      onClick={() => strata?.setFollowHero(!hero.follow)}
+      title={t('ui.follow-title')}
+      onClick={() => strata?.setFollow(!hero.follow)}
     >
       <b className="kgs-switch" aria-hidden="true" />
-      <span>{message(locale, 'ui.follow')}</span>
+      <span>{t('ui.follow')}</span>
     </button>
   )
 }
@@ -141,10 +139,10 @@ export interface HeroMixSliderProps extends PanelProps {
   layers?: LayerInfo[]
 }
 
-/** 主次：正好两层、分主次时出一根滑杆，左头第一层当主角，右头第二层，中间两层一样大（setHeroMix） */
+/** Hero balance slider for exactly two layers (`setHeroMix`): left end the first layer is the hero, right end the second, middle both the same size. */
 export function HeroMixSlider(props: HeroMixSliderProps) {
   const strata = useStrataOr(props.strata)
-  const locale = useLocale(strata, props.locale)
+  const t = useText(strata, props.locale)
   const liveHero = useStrataState(strata, 'hero')
   const liveLayers = useStrataState(strata, 'layers')
   const hero = props.hero !== undefined ? props.hero : liveHero
@@ -152,8 +150,8 @@ export function HeroMixSlider(props: HeroMixSliderProps) {
   if (!pair || !hero) return null
   const [a, b] = pair
   return (
-    <label className={cx('kgs-slider', 'kgs-hero-mix', props.className)} style={props.style} title={message(locale, 'ui.hero-mix-title')}>
-      <span>{message(locale, 'ui.hero-mix')}</span>
+    <label className={cx('kgs-slider', 'kgs-hero-mix', props.className)} style={props.style} title={t('ui.hero-mix-title')}>
+      <span>{t('ui.hero-mix')}</span>
       <input
         className="kgs-range"
         type="range"
@@ -176,16 +174,16 @@ export interface SpreadSliderProps extends PanelProps {
   step?: number
 }
 
-/** 层距的倍数（setSpread）。初值从实例的视图状态读 */
+/** Layer spacing slider (`setSpread`). Starts from the instance's `spread`. */
 export function SpreadSlider(props: SpreadSliderProps) {
   const strata = useStrataOr(props.strata)
-  const locale = useLocale(strata, props.locale)
+  const t = useText(strata, props.locale)
   const [own, setOwn] = useState<{ strata: Strata | null; value: number } | null>(null)
   // 换了实例就从它那儿重新读一次
-  const value = own && own.strata === strata ? own.value : (strata?.getView().spread ?? 1)
+  const value = own && own.strata === strata ? own.value : (strata?.spread ?? 1)
   return (
     <label className={cx('kgs-slider', 'kgs-spread', props.className)} style={props.style}>
-      <span>{message(locale, 'ui.spread')}</span>
+      <span>{t('ui.spread')}</span>
       <input
         className="kgs-range"
         type="range"
@@ -205,17 +203,17 @@ export function SpreadSlider(props: SpreadSliderProps) {
 
 // ─── 镜头按钮 ────────────────────────────────────────────────────────────────
 
-/** 总览（放开聚焦、主角回家、镜头取总览）和叠看（几层压在一起从上往下看） */
+/** Overview (release focus, hero back home, overview shot) and stack (layers pressed together, seen from above) buttons. */
 export function ViewButtons(props: PanelProps) {
   const strata = useStrataOr(props.strata)
-  const locale = useLocale(strata, props.locale)
+  const t = useText(strata, props.locale)
   return (
-    <div className={cx('kgs-views', props.className)} style={props.style} role="group" aria-label={message(locale, 'ui.views')}>
+    <div className={cx('kgs-views', props.className)} style={props.style} role="group" aria-label={t('ui.views')}>
       <button type="button" className="kgs-view-button" onClick={() => strata?.focusLayer(null)}>
-        {message(locale, 'ui.overview')}
+        {t('ui.overview')}
       </button>
       <button type="button" className="kgs-view-button" onClick={() => strata?.shot('top')}>
-        {message(locale, 'ui.overlay')}
+        {t('ui.overlay')}
       </button>
     </div>
   )
@@ -224,29 +222,27 @@ export function ViewButtons(props: PanelProps) {
 // ─── 悬停提示 ────────────────────────────────────────────────────────────────
 
 export interface NodeTipProps extends PanelProps {
-  /** 不看实例的 hover 事件，直接给（服务端渲染、测试、自己管悬停） */
+  /** Give the hover info directly instead of listening to `hover` (server rendering, tests, your own hover handling). */
   info?: HoverInfo | null
-  /** 离指针多远（像素），缺省 [16, 14] */
+  /** Offset from the pointer in pixels; default `[16, 14]`. */
   offset?: [number, number]
 }
 
-/**
- * 悬停提示：名字、层 · 组；能展开的写“N 个字段 · 双击展开”，展开着的写“双击收起”。
- * 按指针的位置绝对定位：放在和画布同一个定位容器里。
- */
+/** Hover tooltip: name, layer · group; for expandable nodes "N fields · double-click to expand" (the noun from the node type's `NodeStyle.childNoun`, otherwise "N inside"), for expanded ones "double-click to collapse". Positioned at `info.pointer`: put it in `<StrataCanvas>`'s children (same positioned container as the canvas). */
 export function NodeTip(props: NodeTipProps) {
   const strata = useStrataOr(props.strata)
-  const locale = useLocale(strata, props.locale)
+  const t = useText(strata, props.locale)
   const [hover, setHover] = useState<HoverInfo | null>(null)
   useStrataEvent(props.info !== undefined ? null : strata, 'hover', setHover)
   const info = props.info !== undefined ? props.info : hover
   if (!info) return null
   const [dx, dy] = props.offset ?? [16, 14]
+  const { where, fold } = tipLines(info, t)
   return (
-    <div className={cx('kgs-tip', props.className)} style={{ left: info.x + dx, top: info.y + dy, ...props.style }} role="tooltip">
+    <div className={cx('kgs-tip', props.className)} style={{ left: info.pointer.x + dx, top: info.pointer.y + dy, ...props.style }} role="tooltip">
       <b>{info.label}</b>
-      <span>{[info.layer, info.group].filter(Boolean).join(' · ')}</span>
-      {(info.folds > 0 || info.expanded) && <span>{info.expanded ? message(locale, 'ui.tip-collapse') : message(locale, 'ui.tip-expand', { n: info.folds })}</span>}
+      <span>{where}</span>
+      {fold && <span>{fold}</span>}
     </div>
   )
 }

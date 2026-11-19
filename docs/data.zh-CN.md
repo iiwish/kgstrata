@@ -75,19 +75,25 @@ const data: StrataData = {
 
 内置的 `type` 样式（`DEFAULT_NODE_STYLES`）：
 
-| `type` | 形状 | 名字用等宽字 |
-|---|---|---|
-| `relation` | `octa`（菱形） | 否 |
-| `table` | `tablet`（标牌） | 是 |
-| `field` | `tablet` | 是 |
-| `metric` | `prism` | 否 |
-| `document` | `page` | 否 |
-| 其他 | `bead`（圆点） | 否 |
+| `type` | 形状 | 名字用等宽字 | 子节点叫什么 |
+|---|---|---|---|
+| `relation` | `octa`（菱形） | 否 | — |
+| `table` | `tablet`（标牌） | 是 | fields / 字段 |
+| `field` | `tablet` | 是 | — |
+| `metric` | `prism` | 否 | — |
+| `document` | `page` | 否 | — |
+| 其他 | `bead`（圆点） | 否 | — |
 
-用 `nodeStyles` 选项增加或覆盖。形状有 `'bead' | 'octa' | 'tablet' | 'prism' | 'page'`。
+用 `nodeStyles` 选项增加或覆盖。形状有 `'bead' | 'octa' | 'tablet' | 'prism' | 'page'`。`childNoun` 是这类节点里收着的东西叫什么，悬停提示用（“22 个字段 · 双击展开”）：写一个词，或者按语言写（顺着语言的回退链找）。不写时提示是“内含 22 项 · 双击展开”。
 
 ```ts
-new Strata(host, { nodeStyles: { board: { shape: 'page' }, column: { shape: 'tablet', mono: true } } })
+new Strata(host, {
+  nodeStyles: {
+    board: { shape: 'page' },
+    column: { shape: 'tablet', mono: true },
+    entity: { childNoun: { en: 'attributes', 'zh-CN': '属性' } },
+  },
+})
 ```
 
 ### 关系：`RelationSpec`
@@ -111,7 +117,7 @@ interface GroupSpec { id: string; name: string; color?: string /* #rrggbb */ }
 
 - 每层用一个维度（`layer.grouping`，缺省第一个）。节点的颜色来自它在这个维度里的组；没有组的节点是中性色。
 - 基准层按它那个维度的组分成扇区，同组的节点挨在一起，颜色成片而不是碎点。
-- 组的 id 只要在本维度里不重复。内部的组 id 是 `"维度/组"`：`highlightGroup()` 和 `getView().group` 用这个全称（`highlightGroup` 也认只写组 id，不重名时）。
+- 组的 id 只要在本维度里不重复。内部的组 id 是 `"维度/组"`：`highlightGroup()` 和 `strata.group` 用这个全称（`highlightGroup` 也认只写组 id，不重名时）。
 - 没写 `color` 的组按顺序从 `theme.palette` 取色。
 
 ## 包含和上卷
@@ -135,7 +141,7 @@ interface GroupSpec { id: string; name: string; color?: string /* #rrggbb */ }
 
 - id 是 `` `${画出来的起点}|${type ?? ''}|${画出来的终点}` ``，`members` 列出原来那几条关系的 id；
 - 只要有一条是 `primary`，它就是 `primary`；
-- `attrs` 不带过来（它们属于各条原始关系）。
+- `attrs` **不**带过来：它们属于各条原始关系，合在一起只能靠猜。上卷出来的关系没有 `attrs`；要看原始的，按 `members` 去 `normalize(data).data.relations` 里找，或者展开节点把它们画出来。所以对比两版时，表收着的话 `attrs` 的变化要展开以后才报出来。
 
 ## 分量和主映射
 
@@ -162,11 +168,11 @@ interface DataIssue {
 }
 ```
 
-`error` 一般表示这一项用不了、会被丢掉；`warning` 表示能用但多半写错了。下表逐条写明 `normalize`（也就是 `setData`）怎么处理。
+`error` 表示用不了：带 `id` 的是那一项用不了、会被丢掉，不带 `id` 的（`version`）是整份数据用不了；`warning` 表示能用但多半写错了。下表逐条写明 `normalize`（也就是 `setData`）怎么处理。
 
 | `code` | 级别 | 什么时候 | 怎么处理 |
 |---|---|---|---|
-| `version` | error | `version` 不是 `2`。 | 什么都不丢，其余照常处理。没有 `id`。 |
+| `version` | error | `version` 不是 `2`。 | 整份数据用不了：`normalize` 交回一张空图，`setData` 什么都不画、保留原来的数据，只返回问题。没有 `id`（`isFatal(issue)` 是 `true`）。 |
 | `duplicate-grouping` | warning | 两个分组维度 id 相同。 | 后面的不算。 |
 | `duplicate-group` | warning | 同一维度里两个组 id 相同。 | 后面的不算。`id` 是组的 id。 |
 | `duplicate-layer` | error | 两层 id 相同。 | 后面的丢掉。 |

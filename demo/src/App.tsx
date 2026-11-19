@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Strata, StrataOptions } from 'kgstrata'
 import { diffPlugin, type DiffApi, type StrataDiff } from 'kgstrata/diff'
 import { pathPlugin, type PathApi } from 'kgstrata/path'
-import { FollowToggle, HeroMixSlider, LayerList, NodeTip, SpreadSlider, StrataCanvas, ViewButtons, useStrataState } from 'kgstrata/react'
+import { FollowToggle, HeroMixSlider, LayerList, NodeTip, SpreadSlider, StrataCanvas, ViewButtons } from 'kgstrata/react'
 import { DiffPanel, changesByLayer } from 'kgstrata/react/diff'
 import { PathList } from 'kgstrata/react/path'
 import { DIFF_REPLACES, diffAfter, groups, layered, layeredPaths, panorama, paths, stress, type DemoLang } from './data'
@@ -34,7 +34,7 @@ function langHref(lang: DemoLang) {
 // 节点画成什么样按类型配：数据里只写 type。内置了 relation、table、metric 等几种，这里补上看板
 const OPTIONS: StrataOptions = {
   hero: QUERY.get('hero') ?? undefined,
-  followHero: QUERY.get('follow') === '1',
+  follow: QUERY.get('follow') === '1',
   hidden: (QUERY.get('hidden') ?? '').split(',').filter(Boolean),
   nodeStyles: { board: { shape: 'page' } },
   locale: ZH ? 'zh-CN' : 'en',
@@ -90,7 +90,7 @@ export function App() {
       const d = await kit.diff.show(versions[0], versions[1], { replaces: DIFF_REPLACES })
       // 等的时候切走了：插件已经作废这次请求
       if (!d) return
-      kit.diff.setView({ layer: 'union', selectedHunk: -1, t: 0 })
+      kit.diff.update({ layer: 'union', selectedHunk: null, t: 0 })
       kit.strata.shot('overview')
       return
     }
@@ -103,17 +103,11 @@ export function App() {
   useEffect(() => {
     if (!engine) return
     const wide = window.innerWidth > 760
-    engine.setInset(!wide ? 0 : mode === 'panorama' ? (STRESS ? 0 : 200) : 350)
+    engine.setInset({ right: !wide ? 0 : mode === 'panorama' ? (STRESS ? 0 : 200) : 350 })
   }, [engine, mode])
 
-  // 每层的节点数从数据里数，只数顶层的（表里收着的字段不算，和画出来的对得上）；看变化时，隐藏的层里有几处变化标在徽标上（层的列表以引擎为准：两版合起来可能多出层）
-  const layers = useStrataState(engine, 'layers')
-  const counts = useMemo(() => {
-    const out = new Map<string, number>()
-    for (const n of data.nodes) if (n.parent === undefined) out.set(n.layer, (out.get(n.layer) ?? 0) + 1)
-    return out
-  }, [data])
-  const badges = useMemo(() => (mode === 'diff' && diff ? changesByLayer(diff, layers) : undefined), [mode, diff, layers])
+  // 每层右边的数是层列表自己数的顶层节点数（LayerInfo.count，表里收着的字段不算）；看变化时，隐藏的层里有几处变化标在徽标上
+  const badges = useMemo(() => (mode === 'diff' && diff ? changesByLayer(diff) : undefined), [mode, diff])
 
   return (
     <div className="app">
@@ -145,7 +139,7 @@ export function App() {
         </nav>
 
         <aside className="layers kgs-panel">
-          <LayerList counts={counts} badges={badges} />
+          <LayerList badges={badges} />
           <FollowToggle />
           {/* 正好两张图时，「主次」滑杆演示连续过渡：左头第一张图当主角，右头第二张，中间两层一样大 */}
           <HeroMixSlider />

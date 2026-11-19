@@ -12,15 +12,18 @@ importers:
         specifier: 3.0.1
         version: 3.0.1
     devDependencies:
+      '@kgdiff/compute':
+        specifier: 0.12.3
+        version: 0.12.3
       '@kgdiff/core':
-        specifier: 0.12.1
-        version: 0.12.1
+        specifier: 0.12.3
+        version: 0.12.3
       '@kgdiff/layout':
-        specifier: 0.12.1
-        version: 0.12.1
+        specifier: 0.12.3
+        version: 0.12.3
       '@kgdiff/scene':
-        specifier: 0.12.1
-        version: 0.12.1
+        specifier: 0.12.3
+        version: 0.12.3
       '@types/d3-force':
         specifier: 3.0.10
         version: 3.0.10
@@ -57,15 +60,18 @@ importers:
 
   examples/diff:
     dependencies:
+      '@kgdiff/compute':
+        specifier: ^0.12.3
+        version: 0.12.3
       '@kgdiff/core':
-        specifier: ^0.12.1
-        version: 0.12.1
+        specifier: ^0.12.3
+        version: 0.12.3
       '@kgdiff/layout':
-        specifier: ^0.12.1
-        version: 0.12.1
+        specifier: ^0.12.3
+        version: 0.12.3
       '@kgdiff/scene':
-        specifier: ^0.12.1
-        version: 0.12.1
+        specifier: ^0.12.3
+        version: 0.12.3
       kgstrata:
         specifier: workspace:*
         version: link:../..
@@ -179,20 +185,20 @@ packages:
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
 
-  '@kgdiff/compute@0.12.1':
-    resolution: {integrity: sha512-nNZBBwdG8XNbBaDMClA4y0twu+DCaOm5eeQnxwP5BAfnZxu/mQCqp2scGYlgo77Hz96Te5uVvw+04NCyEh8Uxg==}
+  '@kgdiff/compute@0.12.3':
+    resolution: {integrity: sha512-xewoAHH5rN5XCiYBXzGxX+UGjERGikCzSxJmuA9ogYdIrTsPEN4vI2LU1JQRNitjM4K68fIqbolcywNcYpgcYg==}
     engines: {node: '>=22'}
 
-  '@kgdiff/core@0.12.1':
-    resolution: {integrity: sha512-LlhOApPN1bw1hl3cuXtqTGTNZgqB1eC1NXrLdqNSKdISwbZPanCS7vyBmowpFNa8suislRr407yA8fcQW+JW2A==}
+  '@kgdiff/core@0.12.3':
+    resolution: {integrity: sha512-Vd1PZmDKa5dNYEtjz2bUoGqfLx1l7WJ/bsjp5ip9gAkleA1IyZifhGpGg3mp+dywCGE77orHtlLM8QH6T9mxJg==}
     engines: {node: '>=22'}
 
-  '@kgdiff/layout@0.12.1':
-    resolution: {integrity: sha512-ruWdheabPeNAAtYLD8ThcbgLolCH8mF/UVCaM3xhShJIHvgJqa9p5UMIVAORlSRU5SKgDEPDkoktXJium0bQww==}
+  '@kgdiff/layout@0.12.3':
+    resolution: {integrity: sha512-PbtjE8EwD6PxGDCyat9wxY9mgEJNXXJIc+lX/UBnGAtsKg0L0WfnO+5CAQ8+uFOnwoiDoENE+3mhGTSkbRrzcA==}
     engines: {node: '>=22'}
 
-  '@kgdiff/scene@0.12.1':
-    resolution: {integrity: sha512-v0ONDXWYTx7n4ag2fq+bTSdXMEm6TQHgf158SUcC1sgWtd04Cb9NCaxXIJgVGfD7pNfveZHu9SwLyD7ZJ2ORmw==}
+  '@kgdiff/scene@0.12.3':
+    resolution: {integrity: sha512-GwvzT2YEs2hTpo07Y6QY3IZW/m37CYpaFSVIR0vkskjIv0BhPKVASc8DdBfaAJfcnNM4sWgEYDCdi4eJPTQPQQ==}
     engines: {node: '>=22'}
 
   '@napi-rs/wasm-runtime@1.2.6':
@@ -817,24 +823,24 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.3
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@kgdiff/compute@0.12.1':
+  '@kgdiff/compute@0.12.3':
     dependencies:
-      '@kgdiff/core': 0.12.1
-      '@kgdiff/layout': 0.12.1
+      '@kgdiff/core': 0.12.3
+      '@kgdiff/layout': 0.12.3
 
-  '@kgdiff/core@0.12.1':
+  '@kgdiff/core@0.12.3':
     dependencies:
-      '@kgdiff/compute': 0.12.1
+      '@kgdiff/compute': 0.12.3
 
-  '@kgdiff/layout@0.12.1':
+  '@kgdiff/layout@0.12.3':
     dependencies:
-      '@kgdiff/compute': 0.12.1
-      '@kgdiff/core': 0.12.1
+      '@kgdiff/compute': 0.12.3
+      '@kgdiff/core': 0.12.3
 
-  '@kgdiff/scene@0.12.1':
+  '@kgdiff/scene@0.12.3':
     dependencies:
-      '@kgdiff/core': 0.12.1
-      '@kgdiff/layout': 0.12.1
+      '@kgdiff/core': 0.12.3
+      '@kgdiff/layout': 0.12.3
 
   '@napi-rs/wasm-runtime@1.2.6(@emnapi/core@2.0.0-beta.2)(@emnapi/runtime@2.0.0-beta.2)':
     dependencies:

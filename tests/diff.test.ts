@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ATTR, HIERARCHY_PREDICATE, buildStrataDiff, createDiffLooks, toKgdiffGraph, type DiffView, type StrataDiff } from '../src/diff'
+import { ATTR, HIERARCHY_PREDICATE, buildStrataDiff, createDiffLooks, toKgdiffGraph, type DiffFrameState, type StrataDiff } from '../src/diff'
 import { applyQuiet, quietOf } from '../src/diff'
 import { normalize, project } from '../src/resolve'
 import type { Looks, PlacedNode, Resolved, ResolvedEdge, ResolvedLayer, ResolvedLink, StrataData, StrataLayout } from '../src/types'
@@ -118,13 +118,13 @@ const layout: StrataLayout = {
   ),
   radii: [14, 26],
   groups: [],
-  primary: 1,
+  anchor: 1,
   blocks: [],
   linkClass: new Map(),
 }
 
-const view = (p: Partial<DiffView>): DiffView => ({
-  layer: 'union', t: 0, selectedHunk: -1, hoveredNode: -1, selectedNode: -1, reducedMotion: false, emphasis: 1, ...p,
+const view = (p: Partial<DiffFrameState>): DiffFrameState => ({
+  layer: 'union', t: 0, selectedHunk: null, hoveredNode: -1, selectedNode: -1, reducedMotion: false, emphasis: 1, ...p,
 })
 
 function noNaN(l: Looks) {
@@ -204,10 +204,29 @@ describe('buildStrataDiff / createDiffLooks', async () => {
     expect(end.nodes[contract].lift).toBeCloseTo(0, 3)
   })
 
+  it('合并箭头的两端跟着两端节点的层和抬升', () => {
+    const customer = idx('customer')
+    let seen = false
+    for (let t = 0; t <= d.duration; t += 16) {
+      const l = looks.resolve(view({ layer: 'replay', t }))
+      for (const m of l.extra.marks) {
+        if (!m.visible) continue
+        expect([0, 1]).toContain(m.a.layer)
+        expect([0, 1]).toContain(m.b.layer)
+        if (l.nodes[party].lift > 0 && m.a.lift === l.nodes[party].lift) {
+          expect(m.a.layer).toBe(d.base.nodes[party].layer)
+          expect(m.b.lift).toBe(l.nodes[customer].lift)
+          seen = true
+        }
+      }
+    }
+    expect(seen).toBe(true)
+  })
+
   it('选中 hunk 时压暗无关的层', () => {
     const merge = d.hunks.find((h) => h.kind === 'merge')!
-    const l = looks.resolve(view({ layer: 'union', selectedHunk: merge.index }))
-    const touched = new Set([...merge.nodes, ...merge.context].map((i) => d.base.nodes[i].layer))
+    const l = looks.resolve(view({ layer: 'union', selectedHunk: merge.id }))
+    const touched = new Set([...merge.nodes, ...merge.context].map((id) => d.base.nodes[idx(id)].layer))
     for (let i = 0; i < l.layers.length; i++) expect(l.layers[i]).toBe(touched.has(i) ? 1 : 0.55)
     expect(l.nodes[party].intensity).toBeCloseTo(1.35 * 1.15)
   })
@@ -276,7 +295,7 @@ describe('toKgdiffGraph：传给 kgdiff 的东西是全的', () => {
   it('收起时也看得到字段级的变化：加了一个字段，表和上卷的映射都报成改了', async () => {
     const a = project(norm(data(['a'], 1)))
     const b = project(norm(data(['a', 'b'], 1)))
-    const lay: StrataLayout = { nodes: new Map([placed('ent', 0, 0, 0, 0), placed('t', 1, 0, 0, -1)].map((p) => [p.id, p])), radii: [10, 10], groups: [], primary: 0, blocks: [], linkClass: new Map() }
+    const lay: StrataLayout = { nodes: new Map([placed('ent', 0, 0, 0, 0), placed('t', 1, 0, 0, -1)].map((p) => [p.id, p])), radii: [10, 10], groups: [], anchor: 0, blocks: [], linkClass: new Map() }
     const d = await buildStrataDiff(a, b, lay)
     const t = d.scene.nodes.find((n) => n.id === 't')!
     expect(t.status).not.toBe('unchanged')
@@ -289,7 +308,7 @@ describe('toKgdiffGraph：传给 kgdiff 的东西是全的', () => {
   it('映射的分量变了算变化', async () => {
     const a = project(norm(data([], 1)))
     const b = project(norm(data([], 5)))
-    const lay: StrataLayout = { nodes: new Map([placed('ent', 0, 0, 0, 0), placed('t', 1, 0, 0, -1)].map((p) => [p.id, p])), radii: [10, 10], groups: [], primary: 0, blocks: [], linkClass: new Map() }
+    const lay: StrataLayout = { nodes: new Map([placed('ent', 0, 0, 0, 0), placed('t', 1, 0, 0, -1)].map((p) => [p.id, p])), radii: [10, 10], groups: [], anchor: 0, blocks: [], linkClass: new Map() }
     const d = await buildStrataDiff(a, b, lay)
     expect(d.scene.edges).toHaveLength(1)
     expect(d.scene.edges[0].status).not.toBe('unchanged')

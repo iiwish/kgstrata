@@ -1,12 +1,15 @@
 // 给人看的字：数据校验的问题描述、报错、交给 kgdiff 的显示用标签、React 面板的界面文字。机器读的东西（问题的 code、错误的 code、谓词）不在这里。
 // 纯数据和一个小函数，不引入 three：不带渲染的入口（validate）也用它。
 
-/** 界面语言。缺省 'en' */
-export type Locale = 'en' | 'zh-CN'
+/** The two built-in languages, with complete compiled-in tables. */
+export type BuiltinLocale = 'en' | 'zh-CN'
 
-export const DEFAULT_LOCALE: Locale = 'en'
+/** A language. Built in: `'en'`, `'zh-CN'` (literal hints); others work after `registerLocale`. Default `'en'`. */
+export type Locale = BuiltinLocale | (string & {})
 
-/** 英文是基准：键都从这里来，别的语言要一条不少 */
+export const DEFAULT_LOCALE: BuiltinLocale = 'en'
+
+/** The English table is the reference: every key comes from it. */
 const EN = {
   // ── validate：DataIssue.message ──
   'issue.version': 'Contract version should be 2, got {got}',
@@ -31,6 +34,11 @@ const EN = {
   'error.view-core-key': 'View key {key} belongs to the core; plugins cannot register it',
   'error.view-key-taken': 'View key {key} is already registered by another plugin',
   'error.webgl-unavailable': 'WebGL is not available in this browser or environment, so the 3D view cannot be created',
+  'error.locale-builtin': 'Locale {locale} is built in and cannot be registered again; use the messages option to override single texts',
+  // ── 布局：注入的布局用不了时的问题（DataIssue.message） ──
+  'issue.layout-incomplete': 'The injected layout is missing {count} node(s) (first: {node}) or does not match the layers; the layout was computed instead',
+  // ── 开发时的提醒（console.warn） ──
+  'warn.canvas-zero-height': 'kgstrata: <StrataCanvas> has zero height, so nothing is visible. Give it (or its parent) a height',
   // ── 交给 kgdiff 的显示用标签（谓词本身不变） ──
   'label.related': 'related to',
   'label.part-of': 'part of',
@@ -49,7 +57,8 @@ const EN = {
   'ui.views': 'Camera',
   'ui.overview': 'Overview',
   'ui.overlay': 'Stack',
-  'ui.tip-expand': '{n} fields · double-click to expand',
+  'ui.tip-expand': '{n} inside · double-click to expand',
+  'ui.tip-expand-noun': '{n} {noun} · double-click to expand',
   'ui.tip-collapse': 'Double-click to collapse',
   'ui.paths': 'Questions',
   'ui.step-skipped': 'This step is in a hidden layer and was skipped',
@@ -92,6 +101,9 @@ const ZH_CN: Record<MessageKey, string> = {
   'error.view-core-key': '视图状态的 {key} 是核心的，插件不能登记',
   'error.view-key-taken': '视图状态的 {key} 已经有插件登记了',
   'error.webgl-unavailable': '这个浏览器（或环境）拿不到 WebGL，画不了 3D 图',
+  'error.locale-builtin': '语言 {locale} 是内置的，不能再登记；要改个别文案请用 messages 选项',
+  'issue.layout-incomplete': '注入的布局缺了 {count} 个节点（第一个是 {node}），或者和层对不上；改为自己算布局',
+  'warn.canvas-zero-height': 'kgstrata：<StrataCanvas> 的高度是 0，什么都看不见。给它（或它的父元素）一个高度',
   'label.related': '关联',
   'label.part-of': '包含于',
   'ui.layers': '层',
@@ -108,7 +120,8 @@ const ZH_CN: Record<MessageKey, string> = {
   'ui.views': '镜头',
   'ui.overview': '总览',
   'ui.overlay': '叠看',
-  'ui.tip-expand': '{n} 个字段 · 双击展开',
+  'ui.tip-expand': '内含 {n} 项 · 双击展开',
+  'ui.tip-expand-noun': '{n} 个{noun} · 双击展开',
   'ui.tip-collapse': '双击收起',
   'ui.paths': '问题',
   'ui.step-skipped': '这一步在隐藏的层里，跳过了',
@@ -127,20 +140,91 @@ const ZH_CN: Record<MessageKey, string> = {
   'ui.diff-hunks': '变化列表',
 }
 
-export const MESSAGES: Readonly<Record<Locale, Readonly<Record<MessageKey, string>>>> = { en: EN, 'zh-CN': ZH_CN }
+/** All texts of one language. */
+export type Messages = Readonly<Record<MessageKey, string>>
 
-/** 认得的语言原样返回，别的（undefined、拼错的）退回缺省的 'en' */
+/** The two built-in tables. Registered languages are not here: use `messagesOf` (missing keys already filled). */
+export const MESSAGES: Readonly<Record<BuiltinLocale, Messages>> = { en: EN, 'zh-CN': ZH_CN }
+
+/** 登记的语言：自己的那几条，和缺的键回退到哪种语言 */
+const REGISTERED = new Map<string, { messages: Partial<Record<MessageKey, string>>; fallback: Locale }>()
+
+const isBuiltin = (locale: string): locale is BuiltinLocale => Object.hasOwn(MESSAGES, locale)
+
+/** Whether the language is known: built in or registered. */
+export function hasLocale(locale: string | undefined): boolean {
+  return locale !== undefined && (isBuiltin(locale) || REGISTERED.has(locale))
+}
+
+/** Registers a language (globally: for instances created later and for `setLocale`). `messages` may be partial: missing keys come from `fallback` (default `'en'`; it may be a registered language, followed along its chain). Registering the same name again replaces it. The built-in `'en'` and `'zh-CN'` cannot be registered (`StrataError('locale-builtin')`); override single texts with `StrataOptions.messages`. */
+export function registerLocale(name: string, messages: Partial<Record<MessageKey, string>>, opts: { fallback?: Locale } = {}): void {
+  if (isBuiltin(name)) throw new StrataError('locale-builtin', message(DEFAULT_LOCALE, 'error.locale-builtin', { locale: name }))
+  REGISTERED.set(name, { messages: { ...messages }, fallback: opts.fallback !== undefined && opts.fallback !== name ? opts.fallback : DEFAULT_LOCALE })
+}
+
+/** Returns a known language as is; anything else (undefined, misspelled, unregistered) falls back to `'en'`. */
 export function localeOf(locale: string | undefined): Locale {
-  return locale !== undefined && locale in MESSAGES ? (locale as Locale) : DEFAULT_LOCALE
+  return hasLocale(locale) ? (locale as Locale) : DEFAULT_LOCALE
 }
 
-/** 取一条消息，把 {名字} 换成 vars 里的值；vars 里没有的原样留着 */
-export function message(locale: Locale | undefined, key: MessageKey, vars: Record<string, string | number> = {}): string {
-  const text = MESSAGES[localeOf(locale)][key]
-  return text.replace(/\{(\w+)\}/g, (all, name: string) => (name in vars ? String(vars[name]) : all))
+/** A language's fallback chain: itself, its fallback, that one's fallback…, always ending at a built-in language. */
+export function fallbackChain(locale: Locale | undefined): Locale[] {
+  const out: Locale[] = []
+  let cur: Locale = localeOf(locale)
+  // 登记时可能绕成环（A 回退 B，再把 B 登记成回退 A）：走过的不再走
+  while (!out.includes(cur)) {
+    out.push(cur)
+    if (isBuiltin(cur)) break
+    cur = localeOf(REGISTERED.get(cur)?.fallback)
+  }
+  if (!isBuiltin(out[out.length - 1])) out.push(DEFAULT_LOCALE)
+  return out
 }
 
-/** 带机器可读 code 的错误：调用方按 code 分支，message 按语言给人看 */
+/** The first built-in language on the fallback chain, for places that only know the built-in ones (kgdiff's descriptions). */
+export function builtinLocaleOf(locale: Locale | undefined): BuiltinLocale {
+  return fallbackChain(locale).find(isBuiltin) ?? DEFAULT_LOCALE
+}
+
+/** All texts of a language; a registered language's missing keys are filled along its fallback chain. */
+export function messagesOf(locale: Locale | undefined): Messages {
+  const chain = fallbackChain(locale)
+  if (chain.length === 1) return MESSAGES[chain[0] as BuiltinLocale]
+  const out = {} as Record<MessageKey, string>
+  for (const loc of [...chain].reverse()) Object.assign(out, isBuiltin(loc) ? MESSAGES[loc] : REGISTERED.get(loc)?.messages)
+  return out
+}
+
+/** Overrides of single texts (message key → text). */
+export type MessageOverrides = Partial<Record<MessageKey, string>>
+
+/** One message, with `{name}` replaced by `vars` (missing variables are left as is). `overrides` (per instance, `StrataOptions.messages`) are used first. */
+export function message(locale: Locale | undefined, key: MessageKey, vars: Record<string, string | number> = {}, overrides?: MessageOverrides): string {
+  const own = overrides && Object.hasOwn(overrides, key) ? overrides[key] : undefined
+  const text = typeof own === 'string' ? own : lookup(locale, key)
+  return text.replace(/\{(\w+)\}/g, (all, name: string) => (Object.hasOwn(vars, name) ? String(vars[name]) : all))
+}
+
+/** 顺着回退链找这一条 */
+function lookup(locale: Locale | undefined, key: MessageKey): string {
+  for (const loc of fallbackChain(locale)) {
+    const table = isBuiltin(loc) ? MESSAGES[loc] : REGISTERED.get(loc)?.messages
+    const v = table?.[key]
+    if (typeof v === 'string') return v
+  }
+  return EN[key]
+}
+
+/** Picks a word for a language (such as `NodeStyle.childNoun`): a string is used as is; a language → word record is looked up along the fallback chain, else its first entry. `null` when not given. */
+export function pickText(value: string | Readonly<Partial<Record<Locale, string>>> | undefined, locale: Locale | undefined): string | null {
+  if (value === undefined) return null
+  if (typeof value === 'string') return value
+  for (const loc of fallbackChain(locale)) if (Object.hasOwn(value, loc) && typeof value[loc] === 'string') return value[loc]!
+  const first = Object.values(value).find((v) => typeof v === 'string')
+  return first ?? null
+}
+
+/** An error with a machine-readable `code`: branch on `code`; `message` is in the instance's language. */
 export class StrataError extends Error {
   constructor(
     readonly code: string,

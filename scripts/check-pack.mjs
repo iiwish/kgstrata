@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 // 构建后检查库的产物（先跑 pnpm build）：
-// - 七个入口的 js 和 d.ts 都在（核心四个，React 三个），React 面板的样式表在
-// - 核心、路径回放、不带渲染的入口、React 入口和 React 的路径面板（连同它们引入的共用块）里没有 @kgdiff/；不带渲染的入口里没有 three
-// - 核心的四个入口里没有 react；React 的入口引着 react（作为外部包），没把它打进来
+// - 八个入口的 js 和 d.ts 都在（核心五个，React 三个），React 面板的样式表在
+// - 核心、路径回放、不带渲染的入口、底层入口、React 入口和 React 的路径面板（连同它们引入的共用块）里没有 @kgdiff/；不带渲染的入口里没有 three
+// - 核心的五个入口里没有 react；React 的入口引着 react（作为外部包），没把它打进来
+// - 核心入口的 js 不转出底层入口的运行时（buildModel、Styler……）
 // - three 没被打进来；没有 .wasm
 // - 类型声明按包名能解析（bundler 和 NodeNext 两种模式），path 插件的模块增强仍然成立
+// - .d.ts 里没有只有新版本才认的写法：带泛型参数的类型化数组（Float32Array<ArrayBuffer> 要 TS ≥ 5.7）、
+//   three 的 Object3DEventMap（Scene<…>、Group<…> 在 @types/three < 0.184 下不是泛型）
+// - 公开入口的类型声明里没有汉字：使用者在编辑器里悬停看到的是英文（kgstrata/internals 不算）
 // - pnpm pack 要打进包里的只有 dist（js、d.ts、React 面板的 css）、README（英文和中文）、LICENSE、CHANGELOG、package.json
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
@@ -13,7 +17,7 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const DIST = join(ROOT, 'dist')
-const CORE_ENTRIES = ['index', 'headless', 'path/index', 'diff/index']
+const CORE_ENTRIES = ['index', 'headless', 'internals', 'path/index', 'diff/index']
 const REACT_ENTRIES = ['react/index', 'react/path', 'react/diff']
 const ENTRIES = [...CORE_ENTRIES, ...REACT_ENTRIES]
 const STYLES = 'react/styles.css'
@@ -72,7 +76,7 @@ function closure(file, ext) {
 const textOf = (files) => files.map(read).join('\n')
 
 // 2. 引入闭包的边界（js 和 d.ts 都看：类型也会把声明拉进来）
-for (const e of ['index', 'headless', 'path/index', 'react/index', 'react/path']) {
+for (const e of ['index', 'headless', 'internals', 'path/index', 'react/index', 'react/path']) {
   for (const ext of ['.js', '.d.ts']) {
     const f = join(DIST, e + ext)
     if (!existsSync(f)) continue
@@ -87,6 +91,16 @@ for (const ext of ['.js', '.d.ts']) {
   for (const x of closure(f, ext)) {
     if (specifiersOf(read(x)).some((s) => s === 'three' || s.startsWith('three/')))
       fail(`dist/headless${ext} 的引入闭包里引入了 three：${relative(DIST, x)}`)
+  }
+}
+// 核心入口不转出底层入口的运行时：只画图的人拿不到 buildModel、Styler 这些不受 semver 保护的东西
+{
+  const f = join(DIST, 'index.d.ts')
+  if (existsSync(f)) {
+    const code = stripComments(read(f))
+    for (const name of ['buildModel', 'nodeColor', 'magnitudeOf', 'Styler', 'StyleState', 'StrataRenderer', 'RendererBase', 'composeFrame', 'fadePresence', 'Model'])
+      if (new RegExp(`\\b${name}\\b`).test(code)) fail(`dist/index.d.ts 转出了底层的 ${name}（应当只在 kgstrata/internals）`)
+    if (/internals/.test(code)) fail('dist/index.d.ts 引了 internals')
   }
 }
 // 核心的四个入口不带 react（js 和 d.ts 都看）
@@ -139,6 +153,32 @@ for (const [mode, config] of [
   } catch (e) {
     fail(`按包名检查类型失败（moduleResolution: ${mode}）：\n${(e.stdout?.toString() ?? '') + (e.stderr?.toString() ?? '')}`)
   }
+}
+
+// 4b. 声明里不带只有新版 TypeScript / @types/three 才认的写法（scripts/compat-types.mjs 在真实的版本组合上查）
+const TYPED_ARRAY_GENERIC = /\b(?:Float32|Float64|Int8|Int16|Int32|Uint8|Uint8Clamped|Uint16|Uint32|BigInt64|BigUint64)Array</
+const dts = all.filter((f) => f.endsWith('.d.ts'))
+for (const f of dts) {
+  const code = stripComments(read(f))
+  if (TYPED_ARRAY_GENERIC.test(code)) fail(`${relative(ROOT, f)} 里有带泛型的类型化数组（${code.match(TYPED_ARRAY_GENERIC)[0]}…）：TS < 5.7 不认，在源码里显式标注成不带泛型的类型`)
+  if (/Object3DEventMap/.test(code)) fail(`${relative(ROOT, f)} 里有 three 的 Object3DEventMap：@types/three < 0.184 下 Scene、Group 不是泛型，在源码里显式标注成 Scene / Group`)
+}
+
+// 4c. 公开入口的声明里没有汉字（注释也算：编辑器悬停显示的就是注释）。kgstrata/internals 和只在内部用的文件不查
+const PUBLIC_DTS = [
+  'index', 'headless', 'engine/index', 'engine/types', 'plugin', 'types', 'locale', 'theme', 'resolve', 'layout', 'layout-io', 'stage', 'bridge',
+  'path/index', 'path/steps', 'diff/index', 'diff/adapter', 'react/index', 'react/canvas', 'react/context', 'react/panels', 'react/store', 'react/path', 'react/diff', 'react/styles',
+]
+const HAN = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/
+for (const e of PUBLIC_DTS) {
+  const f = join(DIST, `${e}.d.ts`)
+  if (!existsSync(f)) {
+    fail(`缺 dist/${e}.d.ts（公开声明的清单要跟着源码改）`)
+    continue
+  }
+  const lines = read(f).split('\n')
+  const bad = lines.map((l, i) => [i + 1, l]).filter(([, l]) => HAN.test(l))
+  if (bad.length) fail(`dist/${e}.d.ts 里有汉字（公开接口的 JSDoc 要用英文）：\n${bad.slice(0, 5).map(([n, l]) => `      ${n}: ${l.trim()}`).join('\n')}`)
 }
 
 // 5. 包里只有该有的东西

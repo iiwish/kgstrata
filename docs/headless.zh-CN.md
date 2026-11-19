@@ -26,14 +26,17 @@ npm install kgstrata
 | `resolve(data, opts?)` | `normalize` 加上全部收起的 `project`：`{ resolved, issues }`。 |
 | `relationId(relation)` | 关系没写 id 时得到的 id：`source\|type\|target`。 |
 | `DEFAULT_NODE_STYLES` | 内置的 `type` → 形状表。 |
-| `layoutStrata(resolved, { radius?, primary? })` | 确定性的布局，返回 `StrataLayout`。同样的输入，同样的输出。 |
+| `layoutStrata(resolved, { radius?, anchor? })` | 确定性的布局，返回 `StrataLayout`。同样的输入，同样的输出。 |
+| `layoutToJSON(layout)`、`layoutFromJSON(json)` | 把 `StrataLayout` 存成 JSON（两张 `Map` 换成数组），再读回来。 |
+| `checkLayout(resolved, layout, locale?)` | 这份布局能不能用在这张图上：能用是 `null`，不能用是一条 `layout-incomplete`。 |
+| `isFatal(issue)` | 整份数据用不了的问题（契约版本不对）是 `true`。 |
 | `placeChildren(layout, resolved)` | 在全部收起的布局上，把展开的子节点围着父节点摆上，别的不动。 |
 | `unionData(a, b)` | 两份 `Resolved` 的合集（对比两版时用）。 |
 | `stageOf({ radii, mix, secondaryScale?, spread? })` | 按主角的分量算每层的缩放、亮度、高度。 |
 | `scaleAt(d, secondaryScale?)`、`levelAt(d)` | 离主角 `d` 层远的层的缩放和亮度。 |
 | `bridgesOf(layerOf, cross, hidden)` | 穿过隐藏层的连接。 |
-| `DARK`、`createTheme`、`MESSAGES`、`message`、`localeOf`、`DEFAULT_LOCALE`、`StrataError` | 主题和语言的数据。 |
-| `types.ts` 里的全部类型 | `StrataData`、`Resolved`、`StrataLayout`、`MappingBlock`…… |
+| `DARK`、`createTheme`、`backdropOf`、`MESSAGES`、`message`、`localeOf`、`DEFAULT_LOCALE`、`StrataError` | 主题和语言的数据。 |
+| 契约的类型 | 输入（`StrataData`、`LayerSpec`、`NodeSpec`、`RelationSpec`、`GroupingSpec`、`GroupSpec`、`NodeStyle`、`NodeShape`、`Attrs`、`AttrValue`、`DataIssue`），和上面这些函数收、交的东西（`Normalized`、`NormalNode`、`NormalRelation`、`Resolved`、`ResolvedLayer`、`ResolvedNode`、`ResolvedEdge`、`ResolvedLink`、`ResolvedGroup`、`StrataLayout`、`StrataLayoutJSON`、`LayoutOptions`、`PlacedNode`、`MappingBlock`、`BlockType`、`LinkClass`、`GroupTerritory`）。每帧画的样子（`Looks`、`NodeLook`、`EdgeLook`、`BaseNode`……）只在 `kgstrata/internals`。 |
 
 ## 在 CI 里校验
 
@@ -54,14 +57,14 @@ process.exit(issues.some((i) => i.level === 'error') ? 1 : 0)
 import { resolve, layoutStrata } from 'kgstrata/headless'
 
 const { resolved, issues } = resolve(data)
-const layout = layoutStrata(resolved, { radius: 26, primary: 'onto' })
+const layout = layoutStrata(resolved, { radius: 26, anchor: 'onto' })
 
 for (const [id, n] of layout.nodes) {
   // n.layer：层的下标（0 是最上面）；n.x、n.z：盘面坐标，盘心在 (0, 0)；n.r：半径
   console.log(id, n.layer, n.x.toFixed(2), n.z.toFixed(2))
 }
 layout.radii      // 每层盘面的半径
-layout.primary    // 基准层的下标
+layout.anchor     // 基准层的下标
 layout.blocks     // 对应块：{ type, anchors, aligned, center, … }
 layout.linkClass  // 映射的 id → 'primary' | 'inner' | 'outer'
 layout.groups     // 基准层那个分组维度里每个组的扇区
@@ -72,9 +75,29 @@ layout.groups     // 基准层那个分组维度里每个组的扇区
 | 选项 | 缺省 | 含义 |
 |---|---|---|
 | `radius` | `26` | 基准层盘面的半径（世界单位）。 |
-| `primary` | 映射最多的那层 | 基准层的 id（就是 `Strata` 的 `anchor` 选项）。 |
+| `anchor` | 映射最多的那层 | 基准层的 id（就是 `Strata` 的 `anchor` 选项）。0.1 里叫 `primary`。 |
 
-`Strata` 自己用的是 `radius = 26 × max(1, √(n / 110))`，`n` 是最大那层的节点数，图越大盘越大。想得到一模一样的坐标，就传同样的值。
+`Strata` 自己用的是 `radius = 26 × max(1, √(n / 110))`，`n` 是最大那层的节点数，图越大盘越大。想得到一模一样的坐标，就传同样的值；注入布局的函数拿到的 `defaults` 就是这几项。
+
+## 预先算好布局，交给 `Strata`
+
+布局是确定的，但几千个节点时并不便宜。算一次（在 Worker 里、服务端、构建时），存下来，再注入：
+
+```ts
+// 服务端或者构建时
+import { resolve, layoutStrata, layoutToJSON } from 'kgstrata/headless'
+const { resolved } = resolve(data)
+const json = JSON.stringify(layoutToJSON(layoutStrata(resolved, { radius: 26, anchor: 'onto' })))
+
+// 浏览器里
+import { Strata } from 'kgstrata'
+import { layoutFromJSON } from 'kgstrata/headless'
+const cached = layoutFromJSON(JSON.parse(json))
+const strata = new Strata(host, { anchor: 'onto', layout: () => cached })
+strata.setData(data) // 缓存的布局盖住了所有节点时返回 []
+```
+
+这个函数在布局全部收起的图时调（装了看变化插件时，两版的合集也会问它；那里返回 `null` 让引擎自己算）。布局缺节点、或者和层对不上时，`setData` 返回一条 `layout-incomplete`（warning），布局改为自己算。展开的子节点用 `placeChildren` 添在上面。JSON 不是 `layoutToJSON` 写的（格式 1）时，`layoutFromJSON` 抛 `TypeError`。
 
 在 Node 24 里验证过：下面这段两层的数据从构建产物里跑，得到一个一对一的块。
 
@@ -169,5 +192,5 @@ stageOf({ radii: [26, 20], mix: [1, 0] })
 
 ## 限制
 
-- `Strata` 总是自己算布局，没有选项能把算好的 `StrataLayout` 交给它。
+- 注入的布局要是同一份数据的：位置按节点的 id 找，层按下标对。
 - `StrataLayout` 里的下标（`layer`、`group`、`blocks`）都是对你传进去的那份 `Resolved` 说的，不是 id。

@@ -2,21 +2,22 @@
 // 引入看变化的入口（也就带上了 kgdiff）：只有用这个面板的人才要装 kgdiff。
 
 import { useEffect, useState } from 'react'
-import type { Strata } from '../engine.js'
+import type { Strata } from '../engine/index.js'
 import { familyColors, type ChangeFamily, type DiffApi, type DiffView, type FamilyColor, type StrataDiff } from '../diff/index.js'
-import { message, type MessageKey } from '../locale.js'
-import { useLocale, usePlugin, useStrataOr } from './context.js'
+import type { MessageKey } from '../locale.js'
+import type { Theme } from '../theme.js'
+import { usePlugin, useStrataOr, useStrataState, useText } from './context.js'
 import type { PanelProps } from './panels.js'
 import { countBy, cx } from './store.js'
 
 export interface DiffPanelProps extends PanelProps {
-  /** 看变化插件的接口；不给就用 <StrataCanvas plugins> 里装的那个（名字 'diff'） */
+  /** The diff plugin's API; default: the one installed through `<StrataCanvas plugins>` (name `'diff'`). */
   diff?: DiffApi | null
-  /** 每类变化的颜色；缺省和 3D 里 kgdiff 画的一样（familyColors()） */
+  /** Colours per change family; default as kgdiff draws them in 3D (`familyColors(strata.theme)`, following the theme's `diffScheme`). */
   colors?: Partial<Record<ChangeFamily, FamilyColor>>
-  /** 回放条多久跟一次插件的进度（秒），缺省 0.1 */
+  /** How often the replay bar polls the plugin, in seconds; default 0.1. */
   pollEvery?: number
-  /** 不看插件，直接给这份差异（服务端渲染、测试） */
+  /** Give the comparison directly instead of reading the plugin (server rendering, tests). */
   current?: StrataDiff | null
 }
 
@@ -34,17 +35,12 @@ const FAMILY_KEYS: Record<ChangeFamily, MessageKey> = {
   identity: 'ui.diff-family.identity',
 }
 
-let defaultColors: Record<ChangeFamily, FamilyColor> | null = null
+const colorCache = new Map<Theme['diffScheme'], Record<ChangeFamily, FamilyColor>>()
 
-/** 每一层有几处变化（层的 id → 数）：一处变化算在它第一个节点所在的那层。layers 是看变化时的层（strata.layers），和 diff.base 的层下标对齐 */
-export function changesByLayer(diff: StrataDiff | null | undefined, layers: readonly { id: string }[]): Record<string, number> {
-  const out: Record<string, number> = {}
-  for (const h of diff?.hunks ?? []) {
-    const first = (h.nodes.length ? h.nodes : h.context)[0]
-    const li = first !== undefined ? diff!.base.nodes[first]?.layer : undefined
-    const id = li !== undefined ? layers[li]?.id : undefined
-    if (id !== undefined) out[id] = (out[id] ?? 0) + 1
-  }
+/** Changes per layer (layer id → count). A change counts on the layer most of its nodes are in (`DiffHunk.layer`, the one `follow` switches to). */
+export function changesByLayer(diff: StrataDiff | null | undefined): Record<string, number> {
+  const out: Record<string, number> = Object.create(null)
+  for (const h of diff?.hunks ?? []) if (h.layer) out[h.layer] = (out[h.layer] ?? 0) + 1
   return out
 }
 
@@ -52,19 +48,17 @@ export function changesByLayer(diff: StrataDiff | null | undefined, layers: read
 function initial(view: Readonly<DiffView> | null | undefined, playing: boolean) {
   return {
     layer: (view && view.layer !== 'replay' ? view.layer : 'union') as Layer,
-    hunk: view?.selectedHunk ?? -1,
+    hunk: view?.selectedHunk ?? null,
     t: view?.t ?? 0,
     playing,
   }
 }
 
-/**
- * 看变化的面板。差异从插件的 enter 事件来（展开、收起以后重新比了也跟着换），exit 以后不出；
- * 回放的进度每 0.1 秒跟一次插件。
- */
+/** Version comparison panel: changes from the plugin's `enter` event (also after it re-compares), nothing after `exit`. The replay bar polls the plugin every 0.1 s. */
 export function DiffPanel(props: DiffPanelProps) {
   const strata: Strata | null = useStrataOr(props.strata)
-  const locale = useLocale(strata, props.locale)
+  const t = useText(strata, props.locale)
+  const theme = useStrataState(strata, 'theme')
   const fromContext = usePlugin<DiffApi>('diff')
   const api = props.diff !== undefined ? props.diff : fromContext
   const [entered, setEntered] = useState<{ api: DiffApi | null; diff: StrataDiff | null }>(() => ({ api, diff: api?.current ?? null }))
@@ -96,9 +90,12 @@ export function DiffPanel(props: DiffPanelProps) {
 
   const diff = props.current !== undefined ? props.current : entered.api === api ? entered.diff : null
   if (!diff) return null
-  const colors = { ...(defaultColors ??= familyColors()), ...props.colors }
+  const scheme = theme?.diffScheme ?? 'dark'
+  let fallbackColors = colorCache.get(scheme)
+  if (!fallbackColors) colorCache.set(scheme, (fallbackColors = familyColors(scheme)))
+  const colors = { ...fallbackColors, ...props.colors }
   const families = countBy(diff.hunks, (h) => h.family)
-  const { layer, hunk, t, playing } = st
+  const { layer, hunk, t: time, playing } = st
 
   return (
     <div className={cx('kgs-diff', props.className)} style={props.style}>
@@ -108,24 +105,24 @@ export function DiffPanel(props: DiffPanelProps) {
           return (
             <span key={f} className="kgs-diff-family" data-family={f} style={{ color: c?.text }}>
               <i style={{ background: c?.base }} />
-              {FAMILY_KEYS[f as ChangeFamily] ? message(locale, FAMILY_KEYS[f as ChangeFamily]) : f} {n}
+              {FAMILY_KEYS[f as ChangeFamily] ? t(FAMILY_KEYS[f as ChangeFamily]) : f} {n}
             </span>
           )
         })}
       </div>
-      <div className="kgs-seg" role="group" aria-label={message(locale, 'ui.diff-layers')}>
+      <div className="kgs-seg" role="group" aria-label={t('ui.diff-layers')}>
         {LAYERS.map(([k, key]) => (
           <button
             key={k}
             type="button"
-            aria-pressed={!playing && layer === k && t === 0}
+            aria-pressed={!playing && layer === k && time === 0}
             onClick={() => {
-              setSt((s) => ({ ...s, layer: k, hunk: -1, t: 0, playing: false }))
+              setSt((s) => ({ ...s, layer: k, hunk: null, t: 0, playing: false }))
               api?.play(false)
-              api?.setView({ layer: k, t: 0, selectedHunk: -1 })
+              api?.update({ layer: k, t: 0, selectedHunk: null })
             }}
           >
-            {message(locale, key)}
+            {t(key)}
           </button>
         ))}
       </div>
@@ -133,10 +130,10 @@ export function DiffPanel(props: DiffPanelProps) {
         <button
           type="button"
           className="kgs-play"
-          aria-label={message(locale, playing ? 'ui.diff-pause' : 'ui.diff-play')}
+          aria-label={t(playing ? 'ui.diff-pause' : 'ui.diff-play')}
           aria-pressed={playing}
           onClick={() => {
-            setSt((s) => ({ ...s, hunk: -1, playing: !playing }))
+            setSt((s) => ({ ...s, hunk: null, playing: !playing }))
             api?.play(!playing)
           }}
         >
@@ -148,30 +145,30 @@ export function DiffPanel(props: DiffPanelProps) {
           min={0}
           max={diff.duration}
           step={1}
-          value={t}
-          aria-label={message(locale, 'ui.diff-timeline')}
+          value={time}
+          aria-label={t('ui.diff-timeline')}
           onChange={(e) => {
             const v = Number(e.target.value)
             api?.play(false)
-            api?.setView({ layer: 'replay', t: v, selectedHunk: -1 })
+            api?.update({ layer: 'replay', t: v, selectedHunk: null })
             setSt((s) => ({ ...s, t: v, playing: false }))
           }}
         />
       </div>
-      <ol className="kgs-hunks" aria-label={message(locale, 'ui.diff-hunks')}>
+      <ol className="kgs-hunks" aria-label={t('ui.diff-hunks')}>
         {diff.hunks.map((h) => {
-          const live = t > 0 && t >= h.start && t <= h.end
+          const live = time > 0 && time >= h.start && time <= h.end
           return (
             <li key={h.id}>
               <button
                 type="button"
-                aria-pressed={hunk === h.index}
+                aria-pressed={hunk === h.id}
                 className={cx(live && 'kgs-live')}
                 onClick={() => {
-                  const next = hunk === h.index ? -1 : h.index
+                  const next = hunk === h.id ? null : h.id
                   setSt((s) => ({ ...s, hunk: next }))
                   api?.selectHunk(next)
-                  if (next < 0) strata?.shot('overview')
+                  if (next === null) strata?.shot('overview')
                 }}
               >
                 <i style={{ background: colors[h.family]?.base }} />

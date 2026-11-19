@@ -8,7 +8,7 @@ This page covers `kgstrata/react`: the `<StrataCanvas>` component, the hooks, ev
 npm install kgstrata three react react-dom
 ```
 
-React 18 and 19 are accepted as peers; only React 19 has been tested.
+React 18 and 19 are accepted as peers; 18.3 and 19 have been tested.
 
 | Entry | Contains | Pulls in kgdiff |
 |---|---|---|
@@ -27,19 +27,19 @@ import 'kgstrata/react/styles.css'
 
 export function Graph({ data }: { data: StrataData }) {
   return (
-    <div style={{ position: 'relative', height: 600 }}>
-      <StrataCanvas data={data} options={{ hero: 'onto' }} style={{ position: 'absolute', inset: 0 }}>
-        <aside className="kgs-panel" style={{ position: 'absolute', left: 16, top: 16, width: 200, padding: 8 }}>
-          <LayerList />
-        </aside>
-        <NodeTip />
-      </StrataCanvas>
-    </div>
+    <StrataCanvas data={data} options={{ hero: 'onto' }} style={{ height: 600 }}>
+      <aside className="kgs-panel" style={{ position: 'absolute', left: 16, top: 16, width: 200, padding: 8 }}>
+        <LayerList />
+      </aside>
+      <NodeTip />
+    </StrataCanvas>
   )
 }
 ```
 
-Layout: the component renders a `<div class="kgs-canvas">` (the canvas host, styled by `className` / `style`) and then its `children` **as siblings** of that div, not inside it. Give the canvas div a size, and put both in a positioned wrapper if the children are absolutely positioned (panels, `NodeTip`).
+Layout: the component renders one container, `<div class="kgs-canvas">`, which is a positioning context. Inside it come the canvas host `<div class="kgs-canvas-host">` (absolutely positioned to fill the container) and then the `children`, drawn over the canvas. Panels and `NodeTip` simply use `position: absolute`.
+
+The container comes with default rules, `position: relative; width: 100%; height: 100%; min-height: 320px`, written as `:where(.kgs-canvas){…}` in a `<style>` the component renders itself (`CANVAS_CSS`). They work without `styles.css`, and with zero specificity anything you write (`className`, `style`, your stylesheet) wins: `style={{ height: 600 }}` for a fixed height, `minHeight: 0` to drop the minimum. In development the component warns once in the console (in the instance's language) if the host ends up with zero height.
 
 ### Props
 
@@ -52,16 +52,19 @@ Layout: the component renders a `<div class="kgs-canvas">` (the canvas host, sty
 | `onIssues` | `(issues: DataIssue[]) => void` | Called after every `setData`, also with `[]`. |
 | `onError` | `(error: unknown) => void` | Creation failed (`StrataError` with `code: 'webgl-unavailable'` when there is no WebGL). |
 | `fallback` | `ReactNode \| ((error) => ReactNode)` | Rendered instead of the canvas when creation failed. Default: one line of localized text in `.kgs-fallback`. |
-| `className`, `style` | | Applied to the canvas host div. |
-| `children` | `ReactNode` | Rendered after the canvas, inside the provider, so `useStrata()` / `usePlugin()` work. |
+| `className`, `style` | | Applied to the container (`.kgs-canvas`). |
+| `children` | `ReactNode` | Rendered inside the container after the canvas host (over the canvas), inside the provider, so `useStrata()` / `usePlugin()` work. |
 | `create` | `(host, options) => Strata` | Custom factory; default `new Strata(host, options)`. Useful in tests. |
 | `ref` | `Ref<Strata \| null>` | The instance (`null` until created). |
-| `onHover`, `onSelect` | `(info: HoverInfo \| null) => void` | Core events `hover`, `select`. |
+| `onHover` | `(info: HoverInfo \| null) => void` | Core event `hover`. |
+| `onSelect` | `(info: SelectInfo) => void` | Core event `select` (`{ node, source, pointer }`; also fires for `select()` and `setView`, with `source: 'api'`). |
 | `onFocus` | `(layer: string \| null) => void` | `focus` |
 | `onHero` | `(hero: HeroInfo) => void` | `hero` |
 | `onLayers` | `(layers: LayerInfo[]) => void` | `layers` |
-| `onExpand` | `(ids: string[]) => void` | `expand` |
+| `onExpanded` | `(ids: string[]) => void` | `expanded` |
 | `onContextLost`, `onContextRestored` | `() => void` | `contextlost`, `contextrestored` |
+| `onLocale` | `(locale: Locale) => void` | `locale` |
+| `onTheme` | `(theme: Theme) => void` | `theme` |
 
 Event callbacks and `onIssues` are read fresh each time, so passing new functions does not resubscribe. There is no prop for `tick`; use `useStrataEvent(strata, 'tick', cb)`.
 
@@ -94,16 +97,19 @@ const PLUGINS = [pathPlugin()] as const
 | `useStrataEvent(strata, event, cb)` | `void` | Subscribes to a core event. `cb` may change every render. No-op while `strata` is `null`. |
 | `useStrataState(strata, key)` | see below | Engine state as React state, via `useSyncExternalStore`. Re-renders only when the content changes. |
 | `useStrataOr(strata)` | `Strata \| null` | The given instance, or the context's when `strata` is `undefined`. For writing panels. |
-| `useLocale(strata, locale?)` | `Locale` | `locale` if given, else the instance's, else `'en'`. |
+| `useLocale(strata, locale?)` | `Locale` | `locale` if given, else the instance's (re-renders after `setLocale`), else `'en'`. |
+| `useText(strata, locale?)` | `(key, vars?) => string` | Text function for panels: the instance's language with its `messages` overrides; with a different `locale`, that language without overrides. Re-renders after `setLocale`. |
 
 `useStrataState` keys:
 
 | Key | Type | Source | Value without an instance |
 |---|---|---|---|
 | `'layers'` | `LayerInfo[]` | `strata.layers`, `layers` event | `[]` |
-| `'hero'` | `HeroInfo \| null` | `strata.heroInfo`, `hero` event | `null` |
-| `'expanded'` | `string[]` | `strata.expanded`, `expand` event | `[]` |
-| `'focus'` | `string \| null` | `focus` event | `null` |
+| `'hero'` | `HeroInfo \| null` | `strata.hero`, `hero` event | `null` |
+| `'expanded'` | `string[]` | `strata.expanded`, `expanded` event | `[]` |
+| `'focus'` | `string \| null` | `strata.focus`, `focus` event (one layer only; `null` with several layers) | `null` |
+| `'locale'` | `{ locale, messages }` | `strata.locale`, `strata.messages`, `locale` event | `{ locale: 'en', messages: {} }` |
+| `'theme'` | `Theme \| null` | `strata.theme`, `theme` event | `null` |
 
 `<StrataProvider strata plugins?>` passes an instance to the hooks and panels when you create `Strata` yourself instead of using `<StrataCanvas>`.
 
@@ -123,7 +129,7 @@ One row per layer. Clicking a row makes that layer the hero (several layers) or 
 
 | Prop | Type | Meaning |
 |---|---|---|
-| `counts` | `Record<string, number> \| Map<string, number>` | Number shown on the right of each row (e.g. node count), by layer id. |
+| `counts` | `Record<string, number> \| Map<string, number> \| false` | Number shown on the right of each row, by layer id. Default: the layer's top-level node count (`LayerInfo.count`; fields folded in tables are not counted). `false` shows no numbers. |
 | `badges` | same | Badge per layer (e.g. number of changes). |
 | `badgeWhen` | `'hidden' \| 'always'` | Default `'hidden'`: the badge only shows on hidden layers, so changes cannot be hidden silently. |
 | `badgeTitle` | `(n, layer) => string` | Badge tooltip. Default: "n changes in this layer". |
@@ -131,7 +137,7 @@ One row per layer. Clicking a row makes that layer the hero (several layers) or 
 
 ### `<FollowToggle>`
 
-Switch for `setFollowHero`. Renders nothing with a single layer. Prop: `hero?` (supply state directly).
+Switch for `setFollow`. Renders nothing with a single layer. Prop: `hero?` (supply state directly).
 
 ### `<HeroMixSlider>`
 
@@ -139,15 +145,15 @@ A slider for `setHeroMix` between exactly two layers: left end = first layer is 
 
 ### `<SpreadSlider>`
 
-Slider for `setSpread`. Props: `min` (0.4), `max` (1.8), `step` (0.01). The initial value is read from `getView().spread`.
+Slider for `setSpread`. Props: `min` (0.4), `max` (1.8), `step` (0.01). The initial value is read from `strata.spread`.
 
 ### `<ViewButtons>`
 
-Two buttons: **Overview** (`focusLayer(null)`: release focus, hero back home, overview shot) and **Stack** (`shot('top')`).
+Two buttons: **Overview** (`focusLayer(null)`: with one layer releases focus, with several the hero goes back home; overview shot) and **Stack** (`shot('top')`).
 
 ### `<NodeTip>`
 
-Tooltip that follows the `hover` event: name, layer · group, and "N fields · double-click to expand" / "Double-click to collapse". Absolutely positioned at the pointer, so it must share a positioned container with the canvas.
+Tooltip that follows the `hover` event: name, layer name · group name, and "N fields · double-click to expand" / "Double-click to collapse". The noun comes from the node type's `NodeStyle.childNoun` (the built-in `table` style says fields); without one it reads "N inside · double-click to expand". Absolutely positioned at the pointer (`info.pointer`): put it in `<StrataCanvas>`'s children. `tipLines(info, t)` gives the same lines for a tooltip of your own.
 
 | Prop | Type | Meaning |
 |---|---|---|
@@ -176,7 +182,7 @@ const paths: PathItem[] = [
 | `path` | `PathApi \| null` | Plugin API. Default: the `'path'` plugin from `<StrataCanvas plugins>`. |
 | `nodeInfo` | `(id) => { label, layer }` | Name and layer shown for each step. Default: looked up in `strata.data` (`nodeInfoFrom`). |
 | `active` / `onActiveChange` | `string \| null` / `(id) => void` | Controlled selection. |
-| `live` | `PathProgress` | Supply progress directly (SSR, tests). |
+| `progress` | `PathProgress` | Supply progress directly (SSR, tests). |
 
 ### `<DiffPanel>` (`kgstrata/react/diff`)
 
@@ -196,17 +202,20 @@ const PLUGINS = [diffPlugin()] as const
 | Prop | Type | Meaning |
 |---|---|---|
 | `diff` | `DiffApi \| null` | Plugin API. Default: the `'diff'` plugin from context. |
-| `colors` | `Partial<Record<ChangeFamily, { base, text }>>` | Override family colours. Default: `familyColors()`. |
+| `colors` | `Partial<Record<ChangeFamily, { base, text }>>` | Override family colours. Default: `familyColors(strata.theme)`, following `theme.diffScheme`. |
 | `pollEvery` | `number` | How often (seconds) the timeline follows the replay. Default 0.1. |
 | `current` | `StrataDiff \| null` | Supply the comparison directly (SSR, tests). |
 
-`changesByLayer(diff, strata.layers)` counts changes per layer id; pass it to `<LayerList badges>` so hidden layers show how many changes they hide.
+`changesByLayer(diff)` counts changes per layer id (each change on `DiffHunk.layer`, the layer most of its nodes are in); pass it to `<LayerList badges>` so hidden layers show how many changes they hide.
 
 ## Styles
 
-`import 'kgstrata/react/styles.css'` is optional. Without it the panels are unstyled markup. The stylesheet does not position anything. `.kgs-panel` is a frosted-glass container you can wrap panels in. `.kgs-canvas` has no styles; size it yourself.
+`import 'kgstrata/react/styles.css'` is optional. Without it the panels are unstyled markup. The stylesheet does not position anything. `.kgs-panel` is a frosted-glass container you can wrap panels in. `.kgs-canvas` gets its defaults from the component itself (see above), not from this stylesheet.
 
-Colours are CSS custom properties on `:root`. Override them on `:root` or on any ancestor:
+Colours are CSS custom properties on `:root`. Override them on `:root` or on any ancestor.
+
+The theme feeds them too: `<StrataCanvas>` writes the variables that follow from its instance's theme on its own container, as a zero-specificity rule (`:where([data-kgs-scope="…"]){…}` in its `<style>`), and updates them after `setTheme`. It only writes the ones whose value differs from what `DARK` gives, so with the default theme it writes nothing and your `:root` values apply. When it does write one, it wins over values inherited from ancestors, while a `className` or `style` on the container still wins over it. `themeVars(theme)` returns the same map (`--kgs-bg` and `--kgs-overlay` from `background`; `--kgs-text`, `--kgs-border*`, `--kgs-hover`, `--kgs-pressed`, `--kgs-track` from `label.primary`; `--kgs-text-2` from `label.secondary`; `--kgs-text-3` from `plate.caption`; `--kgs-accent*` from `accent`), `themeRule(selector, vars)` the CSS, for a container of your own.
+
 
 | Variable | Default | Used for |
 |---|---|---|
@@ -235,8 +244,10 @@ Transitions are switched off under `prefers-reduced-motion: reduce`.
 - On the client the canvas appears after hydration. Panels fill in once the instance exists.
 - With Next.js or similar, render the component on the client only if you want to avoid importing three.js on the server (for example with a dynamic import that disables SSR).
 
-Verified: `renderToString(<StrataCanvas data={null}><LayerList /></StrataCanvas>)` in Node 24 with React 19 returns `<div class="kgs-canvas"></div><ol class="kgs-layer-list" aria-label="Layers"></ol>`.
+`<StrataCanvas>` uses `useLayoutEffect` only in the browser (`useEffect` on the server), so React 18 prints no "useLayoutEffect does nothing on the server" warning (checked with React 18.3.1 and in the tests with `renderToString`).
+
+Checked in the tests (`renderToStaticMarkup`, React 19): `<StrataCanvas data={null}><LayerList /></StrataCanvas>` renders `<div class="kgs-canvas"><style>:where(.kgs-canvas){…}</style><div class="kgs-canvas-host" style="position:absolute;inset:0"></div><ol class="kgs-layer-list" aria-label="Layers"></ol></div>`.
 
 ## Without `<StrataCanvas>`
 
-`kgstrata/react` also exports the DOM-free pieces it is built from: `mountStrata` (create, install plugins, set data, clean up on failure), `bindEvents`, `createStateStore`, `EMPTY_STATE`, `canvasFallback`, and their types (`MountResult`, `PluginApis`, `StateStore`, `StrataEventProps`, `StrataFactory`, `StrataSource`, `StrataState`, `StrataStateKey`).
+`kgstrata/react` also exports the DOM-free pieces it is built from: `mountStrata` (create, install plugins, set data, clean up on failure), `bindEvents`, `createStateStore`, `EMPTY_STATE`, `canvasFallback`, `textFor`, `tipLines`, `layerCount`, `themeVars`, `themeRule`, `CANVAS_CSS`, `CANVAS_HOST_STYLE`, and their types (`MountResult`, `PluginApis`, `StateStore`, `StrataEventProps`, `StrataFactory`, `StrataSource`, `StrataState`, `StrataStateKey`, `TextFn`).

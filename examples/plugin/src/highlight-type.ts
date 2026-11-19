@@ -1,4 +1,6 @@
-import { Emitter, type Model, type StrataPlugin } from 'kgstrata'
+import { Emitter, type StrataPlugin } from 'kgstrata'
+// The Model type lives in the low-level entry (not covered by semver); an overlay only reads it.
+import type { Model } from 'kgstrata/internals'
 
 /** What the plugin hands back from `strata.use(...)`. */
 export interface HighlightTypeApi {
@@ -14,7 +16,7 @@ export interface HighlightTypeApi {
  * An overlay plugin: it never takes over the frame. Each frame it
  * 1. hands the core styler a spotlight (lit nodes stay bright, the rest dim), and
  * 2. paints a small badge next to each lit node's label.
- * It also stores its state in the view (`getView().highlight`).
+ * It also stores its state in the view (`strata.view.highlight`).
  */
 export function highlightTypePlugin(options: { badge?: string } = {}): StrataPlugin<HighlightTypeApi> {
   const badge = options.badge ?? '●'
@@ -63,7 +65,7 @@ export function highlightTypePlugin(options: { badge?: string } = {}): StrataPlu
         events.emit('change', type)
       }
 
-      // Save and restore with getView() / setView().
+      // Save and restore with strata.view / setView().
       ctx.registerView<string | null>('highlight', { get: () => type, set })
       // New data: keep the type, the cache is keyed by model and refreshes by itself.
       ctx.onDispose(() => events.clear())

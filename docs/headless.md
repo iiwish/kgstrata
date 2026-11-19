@@ -26,14 +26,17 @@ npm install kgstrata
 | `resolve(data, opts?)` | `normalize` + `project` with everything collapsed: `{ resolved, issues }`. |
 | `relationId(relation)` | The id a relation gets when it has none: `source\|type\|target`. |
 | `DEFAULT_NODE_STYLES` | Built-in `type` → shape table. |
-| `layoutStrata(resolved, { radius?, primary? })` | Deterministic layout: `StrataLayout`. Same input, same output. |
+| `layoutStrata(resolved, { radius?, anchor? })` | Deterministic layout: `StrataLayout`. Same input, same output. |
+| `layoutToJSON(layout)`, `layoutFromJSON(json)` | Store a `StrataLayout` as JSON (its two `Map`s become arrays) and read it back. |
+| `checkLayout(resolved, layout, locale?)` | Whether a layout can be used for this graph: `null`, or a `layout-incomplete` issue. |
+| `isFatal(issue)` | `true` for an issue that makes the whole input unusable (wrong `version`). |
 | `placeChildren(layout, resolved)` | Adds expanded children around their parents to a collapsed layout without moving anything else. |
 | `unionData(a, b)` | Union of two `Resolved` graphs (used for version comparison). |
 | `stageOf({ radii, mix, secondaryScale?, spread? })` | Per-layer scale, brightness and height for a hero weighting. |
 | `scaleAt(d, secondaryScale?)`, `levelAt(d)` | Scale and brightness of a layer `d` steps from the hero. |
 | `bridgesOf(layerOf, cross, hidden)` | Connections across hidden layers. |
-| `DARK`, `createTheme`, `MESSAGES`, `message`, `localeOf`, `DEFAULT_LOCALE`, `StrataError` | Theme and language data. |
-| all types from `types.ts` | `StrataData`, `Resolved`, `StrataLayout`, `MappingBlock`, … |
+| `DARK`, `createTheme`, `backdropOf`, `MESSAGES`, `message`, `localeOf`, `DEFAULT_LOCALE`, `StrataError` | Theme and language data. |
+| the contract types | The input (`StrataData`, `LayerSpec`, `NodeSpec`, `RelationSpec`, `GroupingSpec`, `GroupSpec`, `NodeStyle`, `NodeShape`, `Attrs`, `AttrValue`, `DataIssue`) and what the functions above take and return (`Normalized`, `NormalNode`, `NormalRelation`, `Resolved`, `ResolvedLayer`, `ResolvedNode`, `ResolvedEdge`, `ResolvedLink`, `ResolvedGroup`, `StrataLayout`, `StrataLayoutJSON`, `LayoutOptions`, `PlacedNode`, `MappingBlock`, `BlockType`, `LinkClass`, `GroupTerritory`). The per-frame render types (`Looks`, `NodeLook`, `EdgeLook`, `BaseNode`, …) are only in `kgstrata/internals`. |
 
 ## Validate in CI
 
@@ -54,14 +57,14 @@ process.exit(issues.some((i) => i.level === 'error') ? 1 : 0)
 import { resolve, layoutStrata } from 'kgstrata/headless'
 
 const { resolved, issues } = resolve(data)
-const layout = layoutStrata(resolved, { radius: 26, primary: 'onto' })
+const layout = layoutStrata(resolved, { radius: 26, anchor: 'onto' })
 
 for (const [id, n] of layout.nodes) {
   // n.layer: layer index (0 = top); n.x, n.z: plate coordinates, plate centre at (0, 0); n.r: radius
   console.log(id, n.layer, n.x.toFixed(2), n.z.toFixed(2))
 }
 layout.radii      // plate radius per layer
-layout.primary    // index of the anchor layer
+layout.anchor     // index of the anchor layer
 layout.blocks     // correspondence blocks: { type, anchors, aligned, center, … }
 layout.linkClass  // mapping id → 'primary' | 'inner' | 'outer'
 layout.groups     // sector per group of the anchor layer's grouping
@@ -72,9 +75,29 @@ layout.groups     // sector per group of the anchor layer's grouping
 | Option | Default | Meaning |
 |---|---|---|
 | `radius` | `26` | Plate radius of the anchor layer, in world units. |
-| `primary` | layer with the most mappings | Anchor layer id (the `anchor` option of `Strata`). |
+| `anchor` | layer with the most mappings | Anchor layer id (the `anchor` option of `Strata`). Called `primary` in 0.1. |
 
-`Strata` itself uses `radius = 26 × max(1, √(n / 110))`, where `n` is the node count of the largest layer, so large graphs get larger plates. Pass the same value if you want identical coordinates.
+`Strata` itself uses `radius = 26 × max(1, √(n / 110))`, where `n` is the node count of the largest layer, so large graphs get larger plates. Pass the same value if you want identical coordinates; a `layout` provider receives exactly these options as `defaults`.
+
+## Precompute the layout, hand it to `Strata`
+
+The layout is deterministic but not free for thousands of nodes. Compute it once (in a Worker, on the server, at build time), store it, and inject it:
+
+```ts
+// on the server or at build time
+import { resolve, layoutStrata, layoutToJSON } from 'kgstrata/headless'
+const { resolved } = resolve(data)
+const json = JSON.stringify(layoutToJSON(layoutStrata(resolved, { radius: 26, anchor: 'onto' })))
+
+// in the browser
+import { Strata } from 'kgstrata'
+import { layoutFromJSON } from 'kgstrata/headless'
+const cached = layoutFromJSON(JSON.parse(json))
+const strata = new Strata(host, { anchor: 'onto', layout: () => cached })
+strata.setData(data) // [] when the cached layout covers every node
+```
+
+The provider is called for the collapsed graph (and, with the diff plugin, for the union of two versions; return `null` there to let the engine compute it). If the layout misses a node or does not match the layers, `setData` returns a `layout-incomplete` warning and computes the layout itself. Expanded children are added on top with `placeChildren`. `layoutFromJSON` throws a `TypeError` when the JSON is not a layout written by `layoutToJSON` (format 1).
 
 Verified in Node 24: the two-layer snippet below runs from the built package and prints a one-to-one block.
 
@@ -169,5 +192,5 @@ stageOf({ radii: [26, 20], mix: [1, 0] })
 
 ## Limits
 
-- `Strata` always computes its own layout. There is no option to hand it a precomputed `StrataLayout`.
+- An injected layout must be for the same data: positions are looked up by node id, layers by index.
 - Indexes in `StrataLayout` (`layer`, `group`, `blocks`) refer to the `Resolved` you passed in, not to ids.

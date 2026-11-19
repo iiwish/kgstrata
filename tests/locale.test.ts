@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { toKgdiffGraph } from '../src/diff'
-import { DEFAULT_LOCALE, MESSAGES, StrataError, localeOf, message } from '../src/locale'
+import { DEFAULT_LOCALE, MESSAGES, StrataError, builtinLocaleOf, fallbackChain, hasLocale, localeOf, message, messagesOf, pickText, registerLocale } from '../src/locale'
 import { ViewRegistry } from '../src/plugin'
-import { normalize, project, validate } from '../src/resolve'
+import { DEFAULT_NODE_STYLES, normalize, project, validate } from '../src/resolve'
 import type { StrataData } from '../src/types'
 
 // 给人看的字按语言出，机器读的 code 不随语言变
@@ -108,7 +108,7 @@ describe('validate 的问题描述', () => {
 describe('报错', () => {
   it('StrataError 带 code，消息按语言', () => {
     const en = new ViewRegistry()
-    expect(() => en.register('hero', { get: () => 0, set: () => {} })).toThrow('View key hero belongs to the core')
+    expect(() => en.register('heroMix', { get: () => 0, set: () => {} })).toThrow('View key heroMix belongs to the core')
     const zh = new ViewRegistry('zh-CN')
     zh.register('path', { get: () => 0, set: () => {} })
     try {
@@ -148,5 +148,79 @@ describe('交给 kgdiff 的显示用标签', () => {
       ['strata:parent', '包含于'],
       ['strata:related', '关联'],
     ])
+  })
+})
+
+describe('扩展语言', () => {
+  it('Locale 放开成 string：登记以后认得，缺的键按回退取', () => {
+    expect(localeOf('ja')).toBe('en')
+    registerLocale('ja', { 'ui.layers': 'レイヤー', 'issue.duplicate-layer': 'レイヤー {layer} が重複しています' })
+    expect(hasLocale('ja')).toBe(true)
+    expect(localeOf('ja')).toBe('ja')
+    expect(message('ja', 'ui.layers')).toBe('レイヤー')
+    expect(message('ja', 'issue.duplicate-layer', { layer: 'onto' })).toBe('レイヤー onto が重複しています')
+    // 缺的键：缺省回退到英文
+    expect(message('ja', 'ui.overview')).toBe('Overview')
+    expect(messagesOf('ja')['ui.overview']).toBe('Overview')
+    expect(messagesOf('ja')['ui.layers']).toBe('レイヤー')
+    expect(Object.keys(messagesOf('ja')).sort()).toEqual(Object.keys(MESSAGES.en).sort())
+    // validate 也认它
+    expect(validate(broken(), { locale: 'ja' }).find((i) => i.code === 'duplicate-layer')?.message).toBe('レイヤー onto が重複しています')
+  })
+
+  it('fallback 可以是中文，也可以是登记过的语言，一路回退', () => {
+    registerLocale('zh-TW', { 'ui.layers': '圖層' }, { fallback: 'zh-CN' })
+    registerLocale('zh-HK', {}, { fallback: 'zh-TW' })
+    expect(fallbackChain('zh-HK')).toEqual(['zh-HK', 'zh-TW', 'zh-CN'])
+    expect(message('zh-HK', 'ui.layers')).toBe('圖層')
+    expect(message('zh-HK', 'ui.overview')).toBe('总览')
+    expect(builtinLocaleOf('zh-HK')).toBe('zh-CN')
+    expect(builtinLocaleOf('ja')).toBe('en')
+    expect(builtinLocaleOf('nope')).toBe('en')
+  })
+
+  it('回退绕成环也不会死循环', () => {
+    registerLocale('loop-a', { 'ui.layers': 'A' }, { fallback: 'loop-b' })
+    registerLocale('loop-b', {}, { fallback: 'loop-a' })
+    expect(fallbackChain('loop-b')).toEqual(['loop-b', 'loop-a', 'en'])
+    expect(message('loop-b', 'ui.layers')).toBe('A')
+  })
+
+  it('内置的不能再登记', () => {
+    expect(() => registerLocale('en', {})).toThrow(StrataError)
+    try {
+      registerLocale('zh-CN', {})
+    } catch (e) {
+      expect((e as StrataError).code).toBe('locale-builtin')
+    }
+  })
+
+  it('按实例覆盖个别文案', () => {
+    expect(message('zh-CN', 'ui.layers', {}, { 'ui.layers': '图层' })).toBe('图层')
+    expect(message('en', 'ui.layer-hide', { layer: 'x' }, { 'ui.layer-hide': 'Hide the {layer} plane' })).toBe('Hide the x plane')
+    expect(message('en', 'ui.overview', {}, { 'ui.layers': 'x' })).toBe('Overview')
+  })
+
+  it('按语言挑名词', () => {
+    expect(pickText(undefined, 'en')).toBe(null)
+    expect(pickText('Felder', 'zh-CN')).toBe('Felder')
+    expect(pickText({ en: 'fields', 'zh-CN': '字段' }, 'zh-CN')).toBe('字段')
+    expect(pickText({ en: 'fields', 'zh-CN': '字段' }, 'ja')).toBe('fields')
+    expect(pickText({ 'zh-CN': '字段' }, 'zh-HK')).toBe('字段')
+    expect(pickText({ de: 'Felder' }, 'en')).toBe('Felder')
+  })
+
+  it('提示文字不写死“字段”', () => {
+    expect(MESSAGES.en['ui.tip-expand']).toBe('{n} inside · double-click to expand')
+    expect(MESSAGES['zh-CN']['ui.tip-expand']).toBe('内含 {n} 项 · 双击展开')
+    expect(message('zh-CN', 'ui.tip-expand-noun', { n: 22, noun: '字段' })).toBe('22 个字段 · 双击展开')
+    expect(message('en', 'ui.tip-expand-noun', { n: 22, noun: 'fields' })).toBe('22 fields · double-click to expand')
+    expect(DEFAULT_NODE_STYLES.table.childNoun).toEqual({ en: 'fields', 'zh-CN': '字段' })
+  })
+
+  it('交给 kgdiff 的标签用登记的语言', () => {
+    registerLocale('fr-test', { 'label.related': 'lié à' })
+    const data = project(normalize({ version: 2, layers: [{ id: 'l', name: 'L' }], nodes: [{ id: 'a', layer: 'l', label: 'a' }, { id: 'b', layer: 'l', label: 'b' }], relations: [{ source: 'a', target: 'b' }] }).data)
+    expect(toKgdiffGraph(data, {}, 'fr-test').edges[0].label).toBe('lié à')
   })
 })

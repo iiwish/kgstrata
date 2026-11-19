@@ -3,8 +3,8 @@
 // 运行时只依赖 react 和核心入口；引入闭包里没有 kgdiff，也没有路径回放和看变化的代码（tests/modules.test.ts 守着）。
 // 路径和变化的面板在各自的子入口：kgstrata/react/path、kgstrata/react/diff。样式是可选的 kgstrata/react/styles.css。
 
-export { StrataCanvas, canvasFallback, type StrataCanvasProps } from './canvas.js'
-export { StrataProvider, useLocale, usePlugin, useStrata, useStrataEvent, useStrataOr, useStrataState, type StrataProviderProps } from './context.js'
+export { CANVAS_CSS, CANVAS_HOST_STYLE, StrataCanvas, canvasFallback, type StrataCanvasProps } from './canvas.js'
+export { StrataProvider, useLocale, usePlugin, useStrata, useStrataEvent, useStrataOr, useStrataState, useText, type StrataProviderProps } from './context.js'
 export {
   FollowToggle,
   HeroMixSlider,
@@ -25,7 +25,12 @@ export {
   EMPTY_STATE,
   bindEvents,
   createStateStore,
+  layerCount,
   mountStrata,
+  textFor,
+  themeRule,
+  themeVars,
+  tipLines,
   type MountResult,
   type PluginApis,
   type StateStore,
@@ -34,4 +39,5 @@ export {
   type StrataSource,
   type StrataState,
   type StrataStateKey,
+  type TextFn,
 } from './store.js'

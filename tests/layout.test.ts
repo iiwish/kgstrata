@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { layoutStrata, placeChildren, unionData } from '../src/layout'
+import { checkLayout, layoutFromJSON, layoutToJSON } from '../src/layout-io'
 // 布局吃的是解析后的数据（内部结构）：这里的样例直接手写成那个样子
 import type { Resolved, ResolvedEdge, ResolvedLink, ResolvedNode, StrataLayout } from '../src/types'
 
@@ -80,7 +81,7 @@ describe('layoutStrata', () => {
       expect(n.importance).toBeGreaterThanOrEqual(0)
       expect(n.importance).toBeLessThanOrEqual(1)
     }
-    expect(lay.primary).toBe(0)
+    expect(lay.anchor).toBe(0)
     expect(lay.radii).toHaveLength(2)
     for (const r of lay.radii) expect(Number.isFinite(r) && r >= 8).toBe(true)
   })
@@ -197,7 +198,7 @@ describe('layoutStrata：两张图对齐', () => {
     expect(again.blocks).toEqual(lay.blocks)
     expect([...again.linkClass]).toEqual([...lay.linkClass])
     for (const n of lay.nodes.values()) for (const v of [n.x, n.z]) expect(Number.isFinite(v)).toBe(true)
-    expect(lay.primary).toBe(0)
+    expect(lay.anchor).toBe(0)
   })
 
   it('对应块的基数', () => {
@@ -359,20 +360,20 @@ describe('layoutStrata：三张图', () => {
 
   it('基准挑和别的图映射最多的那张：夹在中间的本体，而不是排在最前的指标', () => {
     expect(data.layers.map((l) => l.id)).toEqual(['metric', 'onto', 'tables'])
-    expect(lay.primary).toBe(1)
+    expect(lay.anchor).toBe(1)
     // 本体层自己按力导摆：没有被排到外圈去
     for (const id of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'Z']) expect(Math.hypot(at(id).x, at(id).z)).toBeLessThanOrEqual(R + 1e-6)
   })
 
   it('两张图时一样多，取靠前的那张', () => {
-    expect(layoutStrata(twoGraphs()).primary).toBe(0)
+    expect(layoutStrata(twoGraphs()).anchor).toBe(0)
   })
 
-  it('primary 选项可以指定基准；写了不存在的层就按缺省挑', () => {
-    const l2 = layoutStrata(threeGraphs(), { primary: 'tables' })
-    expect(l2.primary).toBe(2)
+  it('anchor 选项可以指定基准；写了不存在的层就按缺省挑', () => {
+    const l2 = layoutStrata(threeGraphs(), { anchor: 'tables' })
+    expect(l2.anchor).toBe(2)
     for (const id of ['T1', 'T2', 'T9']) expect(Math.hypot(l2.nodes.get(id)!.x, l2.nodes.get(id)!.z)).toBeLessThanOrEqual(R + 1e-6)
-    expect(layoutStrata(threeGraphs(), { primary: 'nope' }).primary).toBe(1)
+    expect(layoutStrata(threeGraphs(), { anchor: 'nope' }).anchor).toBe(1)
   })
 
   it('指标和表都对齐到本体：一对一的正正落在上方 / 下方', () => {
@@ -486,5 +487,43 @@ describe('placeChildren：展开出来的子节点', () => {
     const direct = layoutStrata(open)
     expect(direct.nodes.get('T1.a')!.depth).toBe(1)
     expect(direct.nodes.size).toBe(base.nodes.size + 3)
+  })
+})
+
+describe('布局的存取和注入', () => {
+  it('layoutToJSON / layoutFromJSON：JSON 来回一趟原样', () => {
+    const lay = layoutStrata(twoGraphs())
+    const json = JSON.parse(JSON.stringify(layoutToJSON(lay)))
+    expect(json.format).toBe(1)
+    expect(Array.isArray(json.linkClass)).toBe(true)
+    const back = layoutFromJSON(json)
+    expect(back.anchor).toBe(lay.anchor)
+    expect([...back.nodes]).toEqual([...lay.nodes])
+    expect([...back.linkClass]).toEqual([...lay.linkClass])
+    expect(back.radii).toEqual(lay.radii)
+    expect(back.blocks).toEqual(lay.blocks)
+    expect(back.groups).toEqual(lay.groups)
+  })
+
+  it('layoutFromJSON：形状不对就抛', () => {
+    expect(() => layoutFromJSON(null)).toThrow(TypeError)
+    expect(() => layoutFromJSON({ format: 2 })).toThrow(TypeError)
+    expect(() => layoutFromJSON({ ...layoutToJSON(layoutStrata(twoGraphs())), nodes: [{ id: 'x' }] })).toThrow(TypeError)
+  })
+
+  it('checkLayout：缺节点、层数对不上、节点不在自己那一层都算用不了', () => {
+    const data = twoGraphs()
+    const lay = layoutStrata(data)
+    expect(checkLayout(data, lay)).toBe(null)
+    const nodes = new Map(lay.nodes)
+    const gone = [...nodes.keys()][0]
+    nodes.delete(gone)
+    expect(checkLayout(data, { ...lay, nodes })).toMatchObject({ level: 'warning', code: 'layout-incomplete', id: gone })
+    expect(checkLayout(data, { ...lay, radii: [10] })?.code).toBe('layout-incomplete')
+    const moved = new Map(lay.nodes)
+    moved.set(gone, { ...lay.nodes.get(gone)!, layer: 9 })
+    expect(checkLayout(data, { ...lay, nodes: moved })?.id).toBe(gone)
+    expect(checkLayout(data, null)?.code).toBe('layout-incomplete')
+    expect(checkLayout(data, { ...lay, nodes }, 'zh-CN')?.message).toMatch(/注入的布局缺了 1 个节点/)
   })
 })

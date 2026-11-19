@@ -21,7 +21,7 @@
 - **React 组件。** `<StrataCanvas>`、hooks 和面板（层列表、主次滑杆、路径列表、变化面板）。
 - **语言和主题按实例配。** 英文和简体中文；主题的每个颜色都能改。
 - **不带渲染的入口。** 校验、布局、穿透计算不需要 three.js，能在 Node、Worker 里跑。
-- **视图状态都用 id。** `getView()` / `setView()` 可以存成 JSON、放进地址里。
+- **视图状态都用 id。** `strata.view` / `setView()` 可以存成 JSON、放进地址里。
 
 ## 安装
 
@@ -29,7 +29,7 @@
 npm install kgstrata three
 ```
 
-`three` 是 peer 依赖（`>=0.170.0 <0.200.0`，实测过 0.187）。核心、路径回放、headless、React 这几个入口只要这两个包，都不加载 WebAssembly。用 Vite 打一个最小页面，连 three.js 约 686 kB，gzip 后约 180 kB。
+`three` 是 peer 依赖（`>=0.154.0 <0.200.0`，0.154 到 0.187 实际跑过）。核心、路径回放、headless、React 这几个入口只要这两个包，都不加载 WebAssembly。用 Vite 打一个最小页面，连 three.js 约 686 kB，gzip 后约 180 kB。
 
 ## 30 秒上手
 
@@ -71,13 +71,11 @@ import 'kgstrata/react/styles.css'
 
 export function Graph() {
   return (
-    <div style={{ position: 'relative', height: 600 }}>
-      <StrataCanvas data={data} options={{ hero: 'onto', locale: 'zh-CN' }} style={{ position: 'absolute', inset: 0 }}>
-        <aside className="kgs-panel" style={{ position: 'absolute', left: 16, top: 16, width: 200, padding: 8 }}>
-          <LayerList />
-        </aside>
-      </StrataCanvas>
-    </div>
+    <StrataCanvas data={data} options={{ hero: 'onto', locale: 'zh-CN' }} style={{ height: 600 }}>
+      <aside className="kgs-panel" style={{ position: 'absolute', left: 16, top: 16, width: 200, padding: 8 }}>
+        <LayerList />
+      </aside>
+    </StrataCanvas>
   )
 }
 ```
@@ -94,7 +92,7 @@ path.play(['onto:person', 'onto:company', 'tbl:company'])
 path.on('step', ({ ids, reached }) => console.log(`${reached}/${ids.length}`))
 ```
 
-**两版对比**（`kgstrata/diff`，另装 `@kgdiff/core @kgdiff/scene @kgdiff/layout`；会多出三个 WebAssembly 文件，共约 1.9 MB）：
+**两版对比**（`kgstrata/diff`，另装 `@kgdiff/core @kgdiff/scene @kgdiff/layout @kgdiff/compute`；会多出三个 WebAssembly 文件，共约 1.9 MB）：
 
 ```ts
 import { diffPlugin } from 'kgstrata/diff'
@@ -105,7 +103,7 @@ diff.play(true)
 diff.exit()
 ```
 
-Vite 8 不用配置。Vite 6 构建不用配置，开发服务器要在 `optimizeDeps.exclude` 里排除 kgdiff 的包；webpack、esbuild、Rollup 没有测过。详见 [getting-started.zh-CN.md](docs/getting-started.zh-CN.md#webassembly-和-kgstratadiff)。
+Vite 8、webpack 5、Next.js 16 不用配置。Vite 6（开发服务器）、Rollup、esbuild、Parcel 2 各要几行配置，见[打包工具](docs/getting-started.zh-CN.md#打包工具)。
 
 **不带渲染**（`kgstrata/headless`，运行时不需要 three.js）：
 
@@ -137,7 +135,7 @@ const layout = layoutStrata(resolve(data).resolved) // 位置、对应块、映�
 | [API](docs/api.zh-CN.md) | `Strata` 的成员、选项、视图状态、事件、镜头 |
 | [插件](docs/plugins.zh-CN.md) | 路径回放、两版对比、自己写插件 |
 | [React](docs/react.zh-CN.md) | `<StrataCanvas>`、hooks、面板、CSS 变量、SSR |
-| [主题和语言](docs/theming-and-i18n.zh-CN.md) | `locale`、主题的每一项、怎么加一种语言 |
+| [主题和语言](docs/theming-and-i18n.zh-CN.md) | `locale`、`setLocale`、登记一种语言、`setTheme`、主题的每一项 |
 | [不带渲染](docs/headless.zh-CN.md) | 不渲染时的校验、布局、穿透计算 |
 | [设计](docs/design.zh-CN.md) | 对齐、构图、视觉背后的规则 |
 | [示例](examples) | 能直接跑的原生、React、两版对比、自定义插件示例 |
@@ -150,6 +148,7 @@ const layout = layoutStrata(resolve(data).resolved) // 位置、对应块、映�
 | `kgstrata/path` | `pathPlugin()` | `three` |
 | `kgstrata/diff` | `diffPlugin()`、kgdiff 适配 | `three`、`@kgdiff/*` |
 | `kgstrata/headless` | 校验、整理、布局、多层比例、穿透、类型 | — |
+| `kgstrata/internals` | 给接管模式的插件用的模型、样式、渲染器类型（**不受 semver 保护**） | `three` |
 | `kgstrata/react` | `<StrataCanvas>`、hooks、面板 | `three`、`react` |
 | `kgstrata/react/path` | `<PathList>` | `three`、`react` |
 | `kgstrata/react/diff` | `<DiffPanel>` | `three`、`react`、`@kgdiff/*` |
@@ -158,8 +157,8 @@ const layout = layoutStrata(resolve(data).resolved) // 位置、对应块、映�
 ## 浏览器支持和现状
 
 - 需要 WebGL。拿不到时 `new Strata()` 抛 `StrataError`（`code: 'webgl-unavailable'`），`<StrataCanvas>` 渲染 fallback。
-- 实测过 three.js 0.187、React 19、Vite 8（变化入口另测过 Vite 6）。peer 范围内的其他版本应该能用，但没有测过。
-- 还没有做过跨浏览器测试。
+- 实际跑过 three.js 0.154 到 0.187（0.153 着色器报错）、React 18.3 和 19。类型声明在 `skipLibCheck: false` 下用 TypeScript 5.2、5.6、7.0 配 `@types/three` 0.160、0.170、0.187 查过。打包工具见[打包工具](docs/getting-started.zh-CN.md#打包工具)。
+- Safari 和 Firefox 没有测过。
 
 还没做的：
 

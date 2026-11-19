@@ -11,18 +11,15 @@
 // - 同一对节点之间有几条路，分量就是几（经过了几个中间节点）。
 
 export interface Bridge {
-  /** 上面那层的节点下标 */
+  /** Node index in the upper layer. */
   s: number
-  /** 下面那层的节点下标 */
+  /** Node index in the lower layer. */
   t: number
-  /** 有几条路（经过几个不同的中间节点串起来） */
+  /** Number of paths (distinct intermediate nodes). */
   weight: number
 }
 
-/**
- * layerOf：每个节点在哪一层；cross：跨层的线（两端的节点下标，方向不论）；hidden：哪些层被隐藏了。
- * 返回被隐藏层隔开的可见节点之间的穿透关系，按 (s, t) 排好序。
- */
+/** Bridges between visible nodes separated by hidden layers, sorted by `(s, t)`. `layerOf`: each node's layer; `cross`: lines between layers (node index pairs, any direction); `hidden`: hidden layers. */
 export function bridgesOf(layerOf: number[], cross: [number, number][], hidden: ReadonlySet<number>): Bridge[] {
   if (hidden.size === 0) return []
   // 每个节点往下（层号更大）连着谁

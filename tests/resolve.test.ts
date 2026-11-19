@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalize, project, relationId, resolve, validate } from '../src/resolve'
+import { isFatal, normalize, project, relationId, resolve, validate } from '../src/resolve'
 import type { StrataData } from '../src/types'
 import { layoutStrata } from '../src/layout'
 import { toKgdiffGraph } from '../src/diff'
@@ -267,4 +267,22 @@ describe('原型上的名字也是合法的 id', () => {
       expect(g.nodes.find((n) => n.id === name)!.replaces).toBeUndefined()
     })
   }
+})
+
+describe('契约版本不对：整份数据用不了', () => {
+  it('validate 给一条不带 id 的 error；normalize 交回一张空图', () => {
+    const bad = { ...sample(), version: 3 as 2 }
+    const issues = validate(bad)
+    const v = issues.find((i) => i.code === 'version')!
+    expect(v.level).toBe('error')
+    expect(v.id).toBeUndefined()
+    expect(isFatal(v)).toBe(true)
+    // 带 id 的 error 只是那一项用不了
+    expect(isFatal({ level: 'error', code: 'duplicate-node', message: '', id: 'x' })).toBe(false)
+    expect(isFatal({ level: 'warning', code: 'x', message: '' })).toBe(false)
+    const n = normalize(bad)
+    expect(n.data).toEqual({ groups: [], layers: [], nodes: [], relations: [] })
+    expect(n.issues).toEqual(issues)
+    expect(resolve(bad).resolved.layers).toEqual([])
+  })
 })

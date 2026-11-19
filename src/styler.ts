@@ -21,11 +21,12 @@ export interface StyleState {
   time: number
 }
 
+// 它只管“谁亮谁暗”，这一步要和聚焦、主次的压暗按顺序叠，所以放在样式里算；
+// 序号、额外的线、涟漪这些属于用它的插件，插件在样式之后自己叠上去（路径回放就是这么用的）。
 /**
- * 强调一串有序的节点：rank[i] 是第 i 个节点排第几（1 起），0 = 不在里面；长度和底子的节点数一样。
- * 有它的时候它压过悬停和领域：串里的节点点亮、外环换成强调色，别的节点、线、地面一起退后。
- * 它只管“谁亮谁暗”，这一步要和聚焦、主次的压暗按顺序叠，所以放在样式里算；
- * 序号、额外的线、涟漪这些属于用它的插件，插件在样式之后自己叠上去（路径回放就是这么用的）。
+ * An ordered sequence of nodes to emphasize: `rank[i]` is node i's position (from 1), 0 = not in it;
+ * as long as the base's node list. It overrides hover and groups: its nodes light up with the accent
+ * ring, everything else steps back. Step numbers, extra lines and ripples are drawn by the plugin itself.
  */
 export interface Spotlight {
   rank: ArrayLike<number>
@@ -204,7 +205,7 @@ export class Styler {
     for (let g = 0; g < L.groups.length; g++) L.groups[g] = 0
     if (focus >= 0) {
       const n = base.nodes[focus]
-      if (n.group >= 0) L.groups[n.group] = n.layer === layout.primary ? 0.45 : 0.3
+      if (n.group >= 0) L.groups[n.group] = n.layer === layout.anchor ? 0.45 : 0.3
     }
     if (s.group >= 0 && s.group < L.groups.length) L.groups[s.group] = 1
     if (spotOn) {

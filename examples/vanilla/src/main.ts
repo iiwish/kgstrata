@@ -11,8 +11,9 @@ try {
   for (const issue of issues) console.warn(`[${issue.code}] ${issue.message}`)
 
   // Click a node to select it; double-click a table to show its fields.
-  strata.on('select', (info) => console.log('selected', info?.id ?? null))
-  strata.on('expand', (ids) => console.log('expanded', ids))
+  // `select` also fires for strata.select(id) and setView (source: 'api').
+  strata.on('select', ({ node, source }) => console.log('selected', node?.id ?? null, `(${source})`))
+  strata.on('expanded', (ids) => console.log('expanded', ids))
 
   // Free the WebGL context when Vite hot-reloads this module.
   import.meta.hot?.dispose(() => strata.dispose())

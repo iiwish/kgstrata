@@ -12,73 +12,132 @@ import { buildModel, type Model } from '../model.js'
 import { Emitter, type ModeHandle, type StrataContext, type StrataMode, type StrataPlugin } from '../plugin.js'
 import type { RendererBase } from '../renderer/index.js'
 import { project } from '../resolve.js'
+import type { Theme } from '../theme.js'
 import type { Looks, StrataData, StrataLayout } from '../types.js'
-import { buildStrataDiff, createDiffLooks, type ChangeFamily, type DiffView, type StrataDiff } from './adapter.js'
+import { buildStrataDiff, createDiffLooks, hunkIndex, type ChangeFamily, type DiffFrameState, type DiffView, type StrataDiff } from './adapter.js'
 
-export { ATTR, HIERARCHY_PREDICATE, buildStrataDiff, createDiffLooks, toKgdiffGraph, type ChangeFamily, type DiffHunk, type DiffView, type StrataDiff } from './adapter.js'
+export {
+  ATTR,
+  HIERARCHY_PREDICATE,
+  buildStrataDiff,
+  createDiffLooks,
+  hunkIndex,
+  toKgdiffGraph,
+  type ChangeFamily,
+  type DiffFrameState,
+  type DiffHunk,
+  type DiffView,
+  type HunkIndex,
+  type StrataDiff,
+} from './adapter.js'
 
-/** 一类变化在面板上用的颜色：base 画点、条，text 写字 */
+// 装了看变化插件，视图状态里多一项 diff
+declare module '../engine/types.js' {
+  interface StrataView {
+    /**
+     * While comparing: union / before / after / replay, the replay position and the selected change;
+     * `null` when not comparing. Only with the diff plugin installed. `setView` applies it only while
+     * comparing (the two versions are not part of the view: call `diff.show` first); `null` is ignored.
+     */
+    diff?: DiffView | null
+  }
+}
+
+/** Colours of one change family for panels: `base` for dots and bars, `text` for text. */
 export interface FamilyColor {
   base: string
   text: string
 }
 
 /**
- * 五类变化的颜色，和 3D 里 kgdiff 画的一致（夜景主题）。面板（比如 kgstrata/react/diff 的 DiffPanel）按它上色。
- * 是函数不是常量：不引入就不算，模块没有副作用。
+ * The five change families' colours, as kgdiff draws them in 3D. Pass a theme (`strata.theme`, which
+ * carries `diffScheme`) or `'dark'` / `'light'`; default `'dark'`. Panels such as `DiffPanel` use it.
  */
-export function familyColors(): Record<ChangeFamily, FamilyColor> {
-  const fam = getTheme('dark').family
+export function familyColors(scheme: Pick<Theme, 'diffScheme'> | Theme['diffScheme'] = 'dark'): Record<ChangeFamily, FamilyColor> {
+  const fam = getTheme(typeof scheme === 'string' ? scheme : scheme.diffScheme).family
   const out = {} as Record<ChangeFamily, FamilyColor>
   for (const k of Object.keys(fam) as ChangeFamily[]) out[k] = { base: fam[k].base, text: fam[k].text }
   return out
 }
 
-export interface DiffOptions {
-  /**
-   * kgdiff 写变化说明用的语言，也是没写类型的关系、包含关系显示成什么字。
-   * 不写就跟核心的语言（StrataOptions.locale，缺省 'en'）
-   */
-  locale?: Locale
+/** Where kgdiff's WebAssembly modules come from, per module: a URL or path to fetch. */
+export interface DiffWasmSources {
+  /** `@kgdiff/compute/compute.wasm`: diff and matching. */
+  compute?: string | URL
+  /** `@kgdiff/compute/layout.wasm`: layout. */
+  layout?: string | URL
+  /** `@kgdiff/compute/formats.wasm`: parsers. */
+  formats?: string | URL
 }
 
+/** Options of `diffPlugin()`. */
+export interface DiffOptions {
+  /**
+   * Language of kgdiff's change descriptions, and the display names of untyped and containment relations.
+   * Default: the core's language (`StrataOptions.locale`; after `setLocale` an open comparison is computed again).
+   * kgdiff only knows `'en'` and `'zh-CN'`: other languages fall back along their chain (usually to `'en'`)
+   * for the descriptions; relation names still use the language itself.
+   */
+  locale?: Locale
+  /**
+   * Where kgdiff's WebAssembly modules are loaded from, for bundlers that do not handle
+   * `new URL('…', import.meta.url)` (esbuild, Rollup without a plugin). Passed to `init({ sources })` of
+   * `@kgdiff/compute` before the first comparison. Without it kgdiff finds the files next to its own code.
+   */
+  wasm?: DiffWasmSources
+}
+
+/** Options of `diff.show()`. */
 export interface DiffShowOptions {
-  /** 新节点 id → 它吸收了哪些旧节点。两版之间有节点合并时告诉它，kgdiff 才认得出是合并而不是一删一增 */
+  /** New node id → the old nodes it absorbs. Tell kgdiff about merges, or it reports a removal and an addition. */
   replaces?: Record<string, string[]>
 }
 
+/** Options of `diff.shot()`. */
+export interface DiffShotOptions {
+  /** Seconds; `0` jumps. Default `1.2`. */
+  duration?: number
+}
+
+/** The diff plugin's events. */
 export interface DiffEvents {
-  /** 进了看变化（展开、收起以后重新比了一遍也算） */
+  /** A comparison is on screen (also after it was computed again: expand, collapse, language, theme). */
   enter: StrataDiff
-  /** 回到了全景 */
+  /** Back to the normal view. */
   exit: null
 }
 
+/** What `strata.use(diffPlugin())` returns. */
 export interface DiffApi {
   /**
-   * 进入看变化：两版合起来布局一次，位置不动；变化由 kgdiff 算。是异步的：只认最后一次请求，
-   * 等的时候退出了、换了数据、引擎销毁了，返回 null。
+   * Shows the comparison of two versions: laid out once on their union, positions do not move; kgdiff
+   * computes the changes. Asynchronous: only the last call counts; resolves `null` if it was superseded,
+   * `exit` was called, the data changed or the instance was disposed meanwhile.
    */
   show(before: StrataData, after: StrataData, opts?: DiffShowOptions): Promise<StrataDiff | null>
-  /** 回到全景（不重新布局）；也作废还没回来的 show */
+  /** Returns to the normal view (no re-layout); also cancels a pending `show`. The camera returns to the overview unless the user moved it while comparing. */
   exit(): void
-  /** 正在看变化 */
+  /** Whether a comparison is on screen. */
   readonly active: boolean
-  /** 正在看的这份差异；没在看是 null */
+  /** The comparison on screen, or `null`. */
   readonly current: StrataDiff | null
-  /** 现在的回放状态（只读：改用 setView、play、selectHunk） */
+  /** The current view (a copy: change it with `update`, `play`, `selectHunk`), or `null` when not comparing. */
   readonly view: Readonly<DiffView> | null
+  /** Whether the replay is running. */
   readonly playing: boolean
-  setView(patch: Partial<DiffView>): void
-  /** 从头（或停下的地方）回放，false 暂停 */
+  /** Changes the view: `{ layer: 'after' }`, `{ layer: 'replay', t: 1200 }`… Unknown change ids clear the selection. Does not stop the replay (`play(false)` does); no-op when not comparing. */
+  update(patch: Partial<DiffView>): void
+  /** Replays from the start (or where it paused); `false` pauses. */
   play(on: boolean): void
-  /** 选中一处变化（-1 清掉）：镜头框住它，跟随开着时主角换到它所在的那一层 */
-  selectHunk(i: number): void
-  /** 镜头框住第 i 处变化 */
-  shot(hunk: number): void
+  /** Selects a change (`DiffHunk.id`; `null` clears): frames it, and with `follow` on its layer becomes the hero. */
+  selectHunk(id: string | null): void
+  /** Frames this change (`DiffHunk.id`). `opts.duration` in seconds (default 1.2; `0` jumps). */
+  shot(hunk: string, opts?: DiffShotOptions): void
+  /** Subscribes to a diff event. Returns the unsubscribe function. */
   on<K extends keyof DiffEvents>(event: K, cb: (v: DiffEvents[K]) => void): () => void
 }
 
+/** The version comparison plugin: `const diff = strata.use(diffPlugin())`. Registers `diff` in the view state. */
 export function diffPlugin(options: DiffOptions = {}): StrataPlugin<DiffApi> {
   return { name: 'diff', install: (ctx) => install(ctx, options) }
 }
@@ -86,8 +145,10 @@ export function diffPlugin(options: DiffOptions = {}): StrataPlugin<DiffApi> {
 interface DiffState {
   diff: StrataDiff
   model: Model
-  looks: { resolve(view: DiffView, out?: Looks): Looks }
-  view: DiffView
+  looks: { resolve(view: DiffFrameState, out?: Looks): Looks }
+  view: DiffFrameState
+  /** 变化的 id → 下标 */
+  byId: Map<string, number>
   playing: boolean
   speed: number
   out?: Looks
@@ -95,20 +156,21 @@ interface DiffState {
 }
 
 /**
- * kgdiff 的规则：背景安静、变化响亮。没变的节点只留主图层枢纽的名字，没变的边再压暗（跨层的几乎看不见）。
- * 这是看变化自己的样子，在它产出 Looks 的那一步做完，核心不管。
+ * Low level: kgdiff's rule "quiet background, loud changes". Unchanged nodes keep a label only when they
+ * are hubs of the anchor layer; unchanged edges are dimmed further (cross-layer ones almost hidden).
  */
 export interface DiffQuiet {
-  /** 没变的节点里，哪些不出名字 */
+  /** Per node: 1 = unchanged and unlabelled. */
   labels: Uint8Array
-  /** 每条边的亮度再乘多少 */
+  /** Per edge: brightness factor. */
   edges: Float32Array
 }
 
+/** Low level: computes `DiffQuiet` for a comparison. */
 export function quietOf(diff: StrataDiff, layout: StrataLayout): DiffQuiet {
   const labels = new Uint8Array(diff.base.nodes.length)
   diff.base.nodes.forEach((n, i) => {
-    const hub = n.layer === layout.primary && (layout.nodes.get(n.id)?.importance ?? 0) >= 0.8
+    const hub = n.layer === layout.anchor && (layout.nodes.get(n.id)?.importance ?? 0) >= 0.8
     labels[i] = diff.scene.nodes[i].family === 'neutral' && !hub ? 1 : 0
   })
   const edges = new Float32Array(diff.base.edges.length)
@@ -118,13 +180,33 @@ export function quietOf(diff: StrataDiff, layout: StrataLayout): DiffQuiet {
   return { labels, edges }
 }
 
-/** 把安静的规则叠到 kgdiff 出的 Looks 上；指着的那个节点照样出名字 */
+/** Low level: applies `DiffQuiet` to kgdiff's looks; the hovered node keeps its label. */
 export function applyQuiet(looks: Looks, q: DiffQuiet, hovered: number) {
   for (let i = 0; i < q.labels.length; i++) {
     const lb = looks.nodes[i].label
     if (q.labels[i] && lb && i !== hovered) lb.alpha = 0
   }
   for (let i = 0; i < q.edges.length; i++) looks.edges[i].alpha *= q.edges[i]
+}
+
+// 给了 wasm 的位置：第一次比之前交给 @kgdiff/compute 的 init({ sources })。只在给了的时候才引入它，
+// 不给时和以前一样由 kgdiff 自己按 new URL(…, import.meta.url) 找。init 是幂等的，同一页上几个实例共用一份
+let wasmReady: Promise<void> | null = null
+function loadWasm(wasm: DiffWasmSources): Promise<void> {
+  wasmReady ??= import('@kgdiff/compute')
+    .then(({ init }) => {
+      // 只加载给了位置的模块：没给的那几个还是 kgdiff 用到时按缺省的位置自己加载
+      const sources: Partial<Record<'compute' | 'layout' | 'formats', string | URL>> = {}
+      for (const k of ['compute', 'layout', 'formats'] as const) if (wasm[k] !== undefined) sources[k] = wasm[k]
+      const modules = Object.keys(sources) as ('compute' | 'layout' | 'formats')[]
+      return modules.length ? init({ modules, sources }) : undefined
+    })
+    .catch((error: unknown) => {
+      // 失败了下次再试（比如地址写错、网络断了）
+      wasmReady = null
+      throw error
+    })
+  return wasmReady
 }
 
 function install(ctx: StrataContext, options: DiffOptions): DiffApi {
@@ -157,16 +239,29 @@ function install(ctx: StrataContext, options: DiffOptions): DiffApi {
     const union = unionData(b, a)
     const layout = placeChildren(ctx.layoutOf(flat), union)
     const model = buildModel(union, layout, ctx.theme)
+    if (options.wasm) await loadWasm(options.wasm)
     const diff = await buildStrataDiff(b, a, layout, { locale: options.locale ?? ctx.locale, replaces: opts.replaces, theme: ctx.theme })
     // 等 kgdiff 的时候用户可能已经切走、换了数据、或者组件已经卸载
     if (ctx.disposed || ticket !== request) return null
     const base: RendererBase = { ...model.renderer, nodes: diff.base.nodes, edges: diff.base.edges }
+    const { byId } = hunkIndex(diff)
+    // 重新比了一遍（展开、换语言、换主题）：看的版本、回放到哪儿、选中的那处变化接着用（变化的 id 还认得的话）
+    const prev = state?.view
     const st: DiffState = {
       diff,
       model,
+      byId,
       quiet: quietOf(diff, layout),
       looks: createDiffLooks(diff),
-      view: { layer: 'union', t: 0, selectedHunk: -1, hoveredNode: -1, selectedNode: -1, reducedMotion: ctx.reducedMotion, emphasis: 1 },
+      view: {
+        layer: prev?.layer ?? 'union',
+        t: Math.min(prev?.t ?? 0, diff.duration),
+        selectedHunk: prev?.selectedHunk != null && byId.has(prev.selectedHunk) ? prev.selectedHunk : null,
+        hoveredNode: -1,
+        selectedNode: -1,
+        reducedMotion: ctx.reducedMotion,
+        emphasis: 1,
+      },
       playing: false,
       speed: 1,
     }
@@ -210,20 +305,20 @@ function install(ctx: StrataContext, options: DiffOptions): DiffApi {
     if (was) events.emit('exit', null)
   }
 
-  const shot = (i: number) => {
+  const shot = (id: string, opts: DiffShotOptions = {}) => {
     const d = state
-    const h = d?.diff.hunks[i]
-    if (!d || !h) return
+    const k = d?.byId.get(id)
+    if (!d || k === undefined) return
     // 镜头只框住这处变化本身：上下文（尤其跨层的）会把镜头拉得很远
-    const ids = h.nodes.length ? h.nodes : h.context
-    ctx.fit(
-      ids.map((k) => {
-        const n = d.diff.base.nodes[k]
-        const p = d.model.layout.nodes.get(n.id)
-        return { layer: n.layer, x: p?.x ?? 0, z: p?.z ?? 0 }
-      }),
-      { elevation: 0.62, margin: 3.2 },
-    )
+    const hunk = d.diff.hunks[k]
+    ctx.fit(hunk.nodes.length ? hunk.nodes : hunk.context, { elevation: 0.62, margin: 3.2, duration: opts.duration })
+  }
+
+  /** 正在看（或者正在等）的两版按现在的展开状态、语言、主题重新比一遍 */
+  const again = () => {
+    if (!input) return false
+    void show(input.before, input.after, { replaces: input.replaces })
+    return true
   }
 
   ctx.onChange((change) => {
@@ -232,14 +327,49 @@ function install(ctx: StrataContext, options: DiffOptions): DiffApi {
       request++
       drop()
     }
+    // 换了主题：两版的模型、kgdiff 的配色都按新主题重来
+    if (change === 'theme') again()
+  })
+  // 换了语言：没指定语言时，kgdiff 的变化说明按新语言重写
+  ctx.on('locale', () => {
+    if (options.locale === undefined) again()
   })
   // 看变化时展开、收起：两版按新的展开状态重新比一遍
-  ctx.onExpand(() => {
-    if (!input) return false
-    void show(input.before, input.after, { replaces: input.replaces })
-    return true
-  })
+  ctx.onExpand(again)
   ctx.onDispose(() => events.clear())
+
+  /** 改视图：只收使用者该碰的三项，变化的 id 认不得就当没选 */
+  const update = (patch: Partial<DiffView>) => {
+    const d = state
+    if (!d) return
+    if (patch.layer !== undefined) d.view.layer = patch.layer
+    if (patch.t !== undefined && Number.isFinite(patch.t)) d.view.t = Math.min(Math.max(0, patch.t), d.diff.duration)
+    if (patch.selectedHunk !== undefined) d.view.selectedHunk = patch.selectedHunk !== null && d.byId.has(patch.selectedHunk) ? patch.selectedHunk : null
+  }
+
+  const selectHunk = (id: string | null) => {
+    const d = state
+    if (!d) return
+    d.playing = false
+    d.view.layer = 'union'
+    const k = id !== null ? d.byId.get(id) : undefined
+    d.view.selectedHunk = k !== undefined ? id : null
+    if (k === undefined) return
+    // 跟随：这处变化主要落在哪一层，哪一层当主角
+    ctx.followTo(d.diff.hunks[k].layer, 'none')
+    shot(id!)
+  }
+
+  // 视图状态：正在看变化时带上看的版本、回放位置和选中的那处变化（两版数据不在视图里：没在看时是 null，恢复时也不会开始看）
+  ctx.registerView<DiffView | null>('diff', {
+    get: () => (state && handle?.active ? { layer: state.view.layer, t: state.view.t, selectedHunk: state.view.selectedHunk } : null),
+    set: (v) => {
+      if (!v || !state || !handle?.active) return
+      state.playing = false
+      update(v)
+      if (v.selectedHunk) selectHunk(v.selectedHunk)
+    },
+  })
 
   return {
     show,
@@ -251,36 +381,21 @@ function install(ctx: StrataContext, options: DiffOptions): DiffApi {
       return state?.diff ?? null
     },
     get view() {
-      return state?.view ?? null
+      return state ? { layer: state.view.layer, t: state.view.t, selectedHunk: state.view.selectedHunk } : null
     },
     get playing() {
       return state?.playing ?? false
     },
-    setView: (patch) => {
-      if (state) Object.assign(state.view, patch)
-    },
+    update,
     play: (on) => {
       const d = state
       if (!d) return
       if (on && d.view.t >= d.diff.duration) d.view.t = 0
       d.view.layer = 'replay'
-      d.view.selectedHunk = -1
+      d.view.selectedHunk = null
       d.playing = on
     },
-    selectHunk: (i) => {
-      const d = state
-      if (!d) return
-      d.playing = false
-      d.view.layer = 'union'
-      d.view.selectedHunk = i
-      if (i >= 0) {
-        // 跟随：这处变化主要落在哪一层，哪一层当主角
-        const h = d.diff.hunks[i]
-        const first = h ? (h.nodes.length ? h.nodes : h.context)[0] : undefined
-        if (first !== undefined) ctx.followTo(d.diff.base.nodes[first].layer, 'none')
-        shot(i)
-      }
-    },
+    selectHunk,
     shot,
     on: (event, cb) => events.on(event, cb),
   }

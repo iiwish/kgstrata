@@ -7,13 +7,13 @@ export interface Fog {
   readonly uFogFar: { value: number }
 }
 
-/** 新的一份雾，初值是主题里的远近 */
+/** 新的一份雾。初值只管第一帧之前：每帧 placeFog 按镜头的距离重新摆 */
 export function createFog(near: number, far: number): Fog {
   return { uFogNear: { value: near }, uFogFar: { value: far } }
 }
 
-/** 按镜头到目标的距离摆雾：目标前面一点开始，往后一段全进雾里 */
-export function placeFog(fog: Fog, focusDist: number) {
-  fog.uFogNear.value = focusDist + 12
-  fog.uFogFar.value = focusDist + 125
+/** 按镜头到目标的距离摆雾：目标后面 offsets.near 处开始，offsets.far 处最浓（主题的 fog） */
+export function placeFog(fog: Fog, focusDist: number, offsets: { readonly near: number; readonly far: number } = { near: 12, far: 125 }) {
+  fog.uFogNear.value = focusDist + offsets.near
+  fog.uFogFar.value = focusDist + offsets.far
 }

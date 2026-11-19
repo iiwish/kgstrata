@@ -20,6 +20,7 @@
     "paths": {
       "kgstrata": ["./src/index.ts"],
       "kgstrata/headless": ["./src/headless.ts"],
+      "kgstrata/internals": ["./src/internals.ts"],
       "kgstrata/path": ["./src/path/index.ts"],
       "kgstrata/diff": ["./src/diff/index.ts"],
       "kgstrata/react": ["./src/react/index.ts"],
