@@ -9,59 +9,59 @@
 //   连到子节点上的关系上卷到父节点（字段级的映射上卷成表级的映射，分量相加）；展开父节点时子节点才画出来。
 // - 数据只说“是什么”（type、分组），不说“画成什么样”：形状、等宽字、颜色由样式和主题决定，数据里的颜色只是覆盖。
 
-/** 附带的信息：任何能写成 JSON 的值（和 kgdiff 的 Attrs 一样） */
+/** Extra information: any JSON value (the same as kgdiff's `Attrs`). */
 export type AttrValue = string | number | boolean | null | readonly AttrValue[] | { readonly [key: string]: AttrValue }
 export type Attrs = { readonly [key: string]: AttrValue }
 
 export interface LayerSpec {
   id: string
   name: string
-  /** 这一层按哪个分组维度着色、分疆域（groupings 的 id）。不写就用第一个维度 */
+  /** The grouping (id in `groupings`) this layer is coloured and divided by. Default: the first one. */
   grouping?: string
 }
 
 export interface NodeSpec {
-  /** 全局唯一（跨层也不重复）。validate 会查 */
+  /** Unique across all layers. `validate` checks it. */
   id: string
-  /** 在哪一层（层的 id） */
+  /** Layer id. */
   layer: string
   label: string
-  /** 它是什么（实体、关系本体、表、字段……）。画成什么形状由 nodeStyles 按 type 定 */
+  /** What it is (entity, table, field…). Its shape comes from `nodeStyles` by type. */
   type?: string
-  /** 包含它的节点（同一层）。见上面的说明 */
+  /** The node that contains it (same layer); for example a table containing a field. Children are folded by default. */
   parent?: string
-  /** 属于哪个组：分组维度的 id → 组的 id（比如表既按领域分、又按库分，就写两项） */
+  /** Groups: grouping id → group id (a table grouped by domain and by database has two entries). */
   groups?: Record<string, string>
-  /** 重要度 0..1，缺省按连接数算 */
+  /** Importance 0..1; default from the number of connections. */
   weight?: number
   attrs?: Attrs
 }
 
 export interface RelationSpec {
-  /** 不写就按“起点|类型|终点”生成。同一对节点之间有几条同类型的关系时要自己写 */
+  /** Default: generated as `source|type|target`. Give one when the same two nodes have several relations of the same type. */
   id?: string
   source: string
   target: string
-  /** 关系的类型（投资、外键、落地……）。对比两版时按它认是不是同一条关系 */
+  /** Relation type (invests, foreign key, implemented by…). Comparing two versions matches relations by it. */
   type?: string
-  /** 显示用的文字，缺省用 type */
+  /** Display text; default `type`. */
   label?: string
-  /** 分量，缺省 1。映射的分量是“对上了多少”；一个节点有多条映射时，分量最大的是主映射 */
+  /** Weight, default 1. For mappings it says how well they match; the mapping with the largest weight is a node's primary mapping. */
   weight?: number
-  /** 指定它是主映射（跨层的关系才有意义），优先于分量 */
+  /** Marks it as the primary mapping (only meaningful between layers); takes precedence over weight. */
   primary?: boolean
-  /** 别的信息：口径条件、外键的 join 键…… */
+  /** Other information: conditions, join keys… */
   attrs?: Attrs
 }
 
 export interface GroupSpec {
   id: string
   name: string
-  /** 颜色覆盖（#rrggbb）。不写就从主题的色板里按顺序取 */
+  /** Colour override (`#rrggbb`). Default: taken in order from the theme's palette. */
   color?: string
 }
 
-/** 一个分组维度：领域、库…… */
+/** A grouping dimension: domain, database… */
 export interface GroupingSpec {
   id: string
   name?: string
@@ -69,33 +69,35 @@ export interface GroupingSpec {
 }
 
 export interface StrataData {
-  /** 契约的版本，现在是 2 */
+  /** Contract version, currently 2. */
   version: 2
   title?: string
-  /** 从上到下 */
+  /** Top to bottom. */
   layers: LayerSpec[]
   nodes: NodeSpec[]
   relations: RelationSpec[]
   groupings?: GroupingSpec[]
 }
 
-/** 节点类型 → 画成什么样。数据不带样式，在这里配 */
+/** How a node type is drawn. Data carries no styling; it is configured here. */
 export interface NodeStyle {
   shape?: NodeShape
-  /** 名字用等宽字（表名、字段） */
+  /** Monospace label (table and field names). */
   mono?: boolean
+  /** What its folded children are called ("fields" in "22 fields"): one word, or per language (`{ en: 'fields', fr: 'champs' }`, looked up along the fallback chain). Default: the neutral "N inside". */
+  childNoun?: string | Readonly<Partial<Record<string, string>>>
 }
 
-/** 形状说的是“这是什么”，不说“变了什么”（kgdiff 的规则：空心只表示这一版没有）。 */
+/** A shape says what a node is, not what changed (kgdiff's rule: hollow only means absent in this version). */
 export type NodeShape = 'bead' | 'octa' | 'tablet' | 'prism' | 'page'
 
-/** validate 查出来的问题 */
+/** An issue found by `validate`. */
 export interface DataIssue {
   level: 'error' | 'warning'
-  /** 机器可读的种类：duplicate-node、unknown-layer、dangling-relation…… */
+  /** Machine-readable kind: `duplicate-node`, `unknown-layer`, `dangling-relation`… */
   code: string
   message: string
-  /** 出问题的那一项的 id */
+  /** Id of the item with the issue. */
   id?: string
 }
 
@@ -106,38 +108,38 @@ export interface DataIssue {
 //    连到它们身上的关系上卷。布局、样式、对比都吃 Resolved；到了这里，引用都是有效的，id 都是全的。
 
 export interface ResolvedGroup {
-  /** 全局唯一：“维度 id/组 id” */
+  /** Unique: `"grouping/group"`. */
   id: string
   name: string
-  /** 深色主题下的颜色，#rrggbb */
+  /** Colour on the dark theme, `#rrggbb`. */
   color: string
-  /** 属于哪个分组维度 */
+  /** The grouping it belongs to. */
   grouping?: string
 }
 
 export interface ResolvedNode {
   id: string
   label: string
-  /** 所在层的分组维度里它属于哪个组（ResolvedGroup 的 id） */
+  /** Its group in its layer's grouping (`ResolvedGroup.id`). */
   group?: string
   type?: string
   shape?: NodeShape
   mono?: boolean
-  /** 包含它的节点（同一层）。Resolved 里只有展开出来的子节点才带；顶层节点没有 */
+  /** The node containing it (same layer). In `Resolved` only expanded children have it; top-level nodes do not. */
   parent?: string
   weight?: number
   attrs?: Attrs
-  /** 收在它里面、现在没画出来的子孙（id）。没有就不写 */
+  /** Descendants folded into it and not drawn (ids). Absent when there are none. */
   folds?: string[]
 }
 
-/** 整理过的节点：比 ResolvedNode 多一个“在哪一层” */
+/** A normalized node: a `ResolvedNode` plus its layer. */
 export interface NormalNode extends Omit<ResolvedNode, 'folds'> {
-  /** layers 的下标 */
+  /** Index in `layers`. */
   layer: number
 }
 
-/** 整理过的关系：id 是全的，分量是有效的 */
+/** A normalized relation: complete id, valid weight. */
 export interface NormalRelation {
   id: string
   source: string
@@ -149,17 +151,17 @@ export interface NormalRelation {
   attrs?: Attrs
 }
 
-/** normalize() 的结果：什么都不丢的那一份 */
+/** The result of `normalize()`: nothing dropped except broken items. */
 export interface Normalized {
   title?: string
   groups: ResolvedGroup[]
-  /** 从上到下 */
+  /** Top to bottom. */
   layers: { id: string; name: string; grouping?: string }[]
   nodes: NormalNode[]
   relations: NormalRelation[]
 }
 
-/** 同层的关系 */
+/** A relation within a layer. */
 export interface ResolvedEdge {
   id: string
   source: string
@@ -168,11 +170,11 @@ export interface ResolvedEdge {
   type?: string
   weight?: number
   attrs?: Attrs
-  /** 由哪些关系上卷来的（关系的 id）。没有上卷就不写 */
+  /** The relations rolled up into it (ids). Absent when nothing was rolled up. */
   members?: string[]
 }
 
-/** 跨层的关系（映射） */
+/** A relation between layers (a mapping). */
 export interface ResolvedLink {
   id: string
   source: string
@@ -182,27 +184,27 @@ export interface ResolvedLink {
   weight?: number
   primary?: boolean
   attrs?: Attrs
-  /** 这条映射是由哪些关系上卷来的（关系的 id）。没有上卷就不写 */
+  /** The relations rolled up into this mapping (ids). Absent when nothing was rolled up. */
   members?: string[]
 }
 
 export interface ResolvedLayer {
   id: string
   name: string
-  /** 这一层用的分组维度 */
+  /** The grouping this layer uses. */
   grouping?: string
   nodes: ResolvedNode[]
-  /** 同层的边（包含关系用 ResolvedNode.parent，不写在这里） */
+  /** Edges within the layer (containment is `ResolvedNode.parent`, not listed here). */
   edges?: ResolvedEdge[]
 }
 
 export interface Resolved {
   title?: string
   groups: ResolvedGroup[]
-  /** 从上到下 */
+  /** Top to bottom. */
   layers: ResolvedLayer[]
   links: ResolvedLink[]
-  /** 收起的子节点 → 它现在算在哪个节点头上（最近的画出来的祖先） */
+  /** Folded child → the node it counts as now (its nearest drawn ancestor). */
   folded?: Record<string, string>
 }
 
@@ -211,102 +213,109 @@ export interface Resolved {
 export interface PlacedNode {
   id: string
   layer: number
-  /** 盘面坐标（世界单位），盘心在 (0, 0) */
+  /** Plate coordinates (world units); the plate centre is (0, 0). */
   x: number
   z: number
-  /** 世界单位的半径 */
+  /** Radius in world units. */
   r: number
-  /** groups 的下标，没有归属为 -1 */
+  /** Index in `groups`; `-1` without a group. */
   group: number
-  /** 嵌套的深度：顶层节点 0，展开出来的子节点 1，再往里 2…… */
+  /** Nesting depth: 0 for top-level nodes, 1 for expanded children, 2 further in… */
   depth: number
   degree: number
-  /** 0..1，同层内按连接数分位 */
+  /** 0..1, connection-count percentile within the layer. */
   importance: number
-  /** 所在的对应块（blocks 的下标）。夹在中间的层的节点会同时在上、下两个块里；不在任何块里是空的 */
+  /** The mapping blocks it is in (indexes in `blocks`). Nodes of middle layers can be in a block above and one below; empty when in none. */
   blocks: number[]
 }
 
-/**
- * 映射线的三种：primary 主映射（成块用的那几条，对齐后近乎垂直）；inner 同一个块里的其余映射；
- * outer 跨块的次映射。
- */
+/** The three kinds of mapping lines: `primary` (the mappings forming blocks, near vertical after alignment), `inner` (other mappings within a block), `outer` (secondary mappings between blocks). */
 export type LinkClass = 'primary' | 'inner' | 'outer'
 
-/** 对应块的基数：定位一侧（先摆的那层）的个数 : 对齐一侧的个数 */
+/** Cardinality of a block: anchor side count : aligned side count. */
 export type BlockType = 'one-one' | 'one-many' | 'many-one' | 'many-many'
 
-/** 对应块：被主映射连在一起的一组节点，作为一个整体上下对齐 */
+/** A mapping block: nodes connected by primary mappings, aligned as a whole. */
 export interface MappingBlock {
   index: number
   type: BlockType
-  /** 定位的一侧：先摆好的那层的节点（本体） */
+  /** The anchor side: nodes of the layer laid out first. */
   anchors: string[]
-  /** 对齐过去的一侧（表） */
+  /** The aligned side. */
   aligned: string[]
-  /** 定位一侧、对齐一侧各在哪一层 */
+  /** Layer index of the anchor side. */
   anchorLayer: number
   alignedLayer: number
-  /** 定位一侧的重心（盘面坐标） */
+  /** Centroid of the anchor side (plate coordinates). */
   center: [number, number]
 }
 
 export interface GroupTerritory {
   index: number
   id: string
-  /** 扇区中心角（弧度，x 轴正向起逆时针，按 (cos, sin) → (x, z)） */
+  /** Sector centre angle (radians, counter-clockwise from +x, (cos, sin) → (x, z)). */
   angle: number
-  /** 扇区张角 */
+  /** Sector span (radians). */
   span: number
-  /** 主图层上这个领域的本体的重心 */
+  /** Centroid of this group's nodes on the anchor layer. */
   centroid: [number, number]
-  /** 重心到最远成员的距离 */
+  /** Distance from the centroid to the furthest member. */
   spread: number
 }
 
 export interface StrataLayout {
   nodes: Map<string, PlacedNode>
-  /** 每层盘面的半径（按层的下标），所有盘同心 */
+  /** Plate radius per layer (by layer index); all plates are concentric. */
   radii: number[]
   groups: GroupTerritory[]
-  /** 主图层（做布局基准的那张图）的下标 */
-  primary: number
-  /** 对应块 */
+  /** Index of the anchor layer (`StrataOptions.anchor`); `-1` without layers. */
+  anchor: number
+  /** Mapping blocks. */
   blocks: MappingBlock[]
-  /** 两张图之间的映射各是哪一种：映射的 id → 分类。不是图和图之间的映射不在里面 */
+  /** Class of each mapping between layers: mapping id → class. */
   linkClass: Map<string, LinkClass>
 }
 
 export interface LayoutOptions {
-  /** 主图层的半径，缺省 26 */
+  /** Radius of the anchor layer's plate; default 26. */
   radius?: number
-  /**
-   * 哪一张图做布局的基准（层的 id）：它自己按力导摆，别的图向它对齐。
-   * 不写就挑和别的图映射最多的那张（正好两张图时是第一张）。
-   */
-  primary?: string
+  /** Layer id of the layout anchor: laid out by force simulation, the others aligned to it. Default: the layer with the most mappings (the first with exactly two layers). Same as `StrataOptions.anchor`. */
+  anchor?: string
+}
+
+/** A `StrataLayout` as JSON (`layoutToJSON` / `layoutFromJSON`): the two maps become arrays. */
+export interface StrataLayoutJSON {
+  /** Format version, currently 1. */
+  format: 1
+  nodes: PlacedNode[]
+  radii: number[]
+  groups: GroupTerritory[]
+  anchor: number
+  blocks: MappingBlock[]
+  /** `[mapping id, class]`. */
+  linkClass: [string, LinkClass][]
 }
 
 // ─── 渲染器画的东西 ──────────────────────────────────────────────────────────
 
-/** 渲染器的静态底子：节点和边的固定属性。变的都在 Looks 里。 */
+/** Renderer base: the fixed properties of nodes and edges. What changes is in `Looks`. */
 export interface BaseNode {
   id: string
   layer: number
   shape: NodeShape
-  /** 世界单位的基础半径 */
+  /** Base radius in world units. */
   r: number
   group: number
   mono: boolean
-  /** 星等 0..5：0 最亮。决定光点的大小和光晕，不随交互变 */
+  /** Magnitude 0..5, 0 brightest. Sets dot size and halo; does not change with interaction. */
   mag: number
 }
 
-/** intra 层内的关系；contain 父节点到展开出来的子节点；cross 跨层的映射 */
+/** `intra` within a layer; `contain` parent to expanded child; `cross` a mapping between layers. */
 export type EdgeKind = 'intra' | 'contain' | 'cross'
 
 export interface BaseEdge {
-  /** BaseNode 的下标 */
+  /** Index of a `BaseNode`. */
   s: number
   t: number
   kind: EdgeKind
@@ -318,41 +327,41 @@ export interface LabelLook {
   color: string
   /** 0..1 */
   alpha: number
-  /** 屏幕像素 */
+  /** Screen pixels. */
   size: number
   weight: 400 | 500 | 600
   strike: boolean
-  /** 越大越先占位（碰撞避让） */
+  /** Higher takes its place first (label collision avoidance). */
   priority: number
   mono?: boolean
 }
 
 export interface NodeLook {
   visible: boolean
-  /** 盘面坐标；回放里节点会移动，所以每帧给 */
+  /** Plate coordinates; given every frame because nodes move during replay. */
   x: number
   z: number
   layer: number
-  /** 相对盘面的抬升（世界单位）：新增从盘下升起为负，合并时飞过去为正 */
+  /** Lift above the plate (world units): negative rises from below (added), positive flies over (merged). */
   lift: number
-  /** 乘在基础半径上 */
+  /** Factor on the base radius. */
   scale: number
-  /** 芯的颜色 #rrggbb */
+  /** Core colour `#rrggbb`. */
   color: string
-  /** 亮度倍数：1 正常，>1 会泛光，<1 压暗 */
+  /** Brightness factor: 1 normal, above 1 glows, below 1 dims. */
   intensity: number
   alpha: number
-  /** 空心虚线（这一版没有：kgdiff 的删除幽灵） */
+  /** Hollow and dashed (absent in this version: kgdiff's removal ghost). */
   ghost: boolean
   ring: { color: string; alpha: number } | null
   halo: { color: string; alpha: number; size: number } | null
-  /** 0 = 无；(0,1) = 一圈外扩的涟漪的进度 */
+  /** 0 = none; (0, 1) = progress of an expanding ripple. */
   pulse: number
   label: LabelLook | null
-  /** 改名时的旧名，划掉，排在主标签下面 */
+  /** The old name on a rename, struck through below the main label. */
   label2: LabelLook | null
   badge: string | null
-  /** 路径回放里的序号，0 = 无 */
+  /** Step number in path replay; 0 = none. */
   step: number
 }
 
@@ -367,23 +376,23 @@ export interface EdgeLook {
   visible: boolean
   a: EdgeEnd
   b: EdgeEnd
-  /** 二次贝塞尔控制点相对两端中点抬起的高度（世界单位），0 = 直线；弧线中点实际抬起 arc / 2 */
+  /** Height of the quadratic Bézier control point above the midpoint (world units); 0 = straight. The arc's midpoint rises by `arc / 2`. */
   arc: number
   colorA: string
   colorB: string
   alpha: number
-  /** 屏幕像素 */
+  /** Screen pixels. */
   width: number
   dash: boolean
-  /** 从 a 端画出的比例 [0, 1]（长出 / 收回的动画） */
+  /** Drawn fraction from end a, 0..1 (grow / retract animation). */
   progress: number
-  /** progress 从 b 端算起 */
+  /** `progress` counts from end b. */
   fromTarget: boolean
-  /** 彗星的强度 0..1：0 不流动 */
+  /** Comet strength 0..1; 0 = no flow. */
   flow: number
-  /** 彗星的相位 0..1，错开用 */
+  /** Comet phase 0..1, for staggering. */
   phase: number
-  /** 亮度倍数，>1 泛光 */
+  /** Brightness factor; above 1 glows. */
   intensity: number
 }
 
@@ -395,20 +404,20 @@ export interface ExtraEdges {
 
 export interface Looks {
   nodes: NodeLook[]
-  /** 和 base.edges 一一对应 */
+  /** One per `base.edges`. */
   edges: EdgeLook[]
-  /** 不在底子里的线，各归各的：穿透线、路径的每一段、kgdiff 的标记（合并箭头、边的幽灵） */
+  /** Lines not in the base, each owned by its writer: bridges, path segments, kgdiff marks (merge arrows, edge ghosts). */
   extra: ExtraEdges
-  /** 领域的强调 0..1，按 groups 下标：盘面疆域和灯光跟着它亮 */
+  /** Group emphasis 0..1 by group index: plate territories and lights follow it. */
   groups: number[]
-  /** 0 = 疆域按领域着色；1 = 全部退成灰（看变化的时候） */
+  /** 0 = territories coloured by group; 1 = all grey (while comparing). */
   neutral: number
-  /** 每层的强调 0..1（聚焦一层时其他层压暗） */
+  /** Layer emphasis 0..1 (other layers dim while one is focused). */
   layers: number[]
-  /** 每层在不在场 0..1，缺省都在。隐藏一层时它从 1 淡到 0，盘面跟着淡出 */
+  /** Layer presence 0..1, default 1. Fades from 1 to 0 when a layer is hidden; its plate fades with it. */
   presence?: number[]
-  /** 点阵整体亮到多少 0..1，缺省 1。指着某样东西、走路径时点阵退后一步 */
+  /** Overall brightness of the dot grid 0..1, default 1; it steps back while something is hovered or a path plays. */
   ground?: number
-  /** 盘面涟漪：盘面坐标 + 层 + 进度 0..1 */
+  /** Plate ripples: plate coordinates, layer and progress 0..1. */
   ripples: { x: number; z: number; layer: number; p: number; color: string }[]
 }

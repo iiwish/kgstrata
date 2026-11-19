@@ -21,40 +21,42 @@ import type {
   StrataData,
 } from './types.js'
 
-/** 内置的几种节点类型的样子；nodeStyles 选项里同名的会盖掉它 */
+/** The built-in node type styles; `nodeStyles` entries with the same name replace them. */
 export const DEFAULT_NODE_STYLES: Record<string, NodeStyle> = {
   relation: { shape: 'octa' },
-  table: { shape: 'tablet', mono: true },
+  table: { shape: 'tablet', mono: true, childNoun: { en: 'fields', 'zh-CN': '字段' } },
   field: { shape: 'tablet', mono: true },
   metric: { shape: 'prism' },
   document: { shape: 'page' },
 }
 
 export interface ResolveOptions {
-  /** 节点类型 → 画成什么样 */
+  /** Node type → how it is drawn. */
   nodeStyles?: Record<string, NodeStyle>
-  /** 没写颜色的组从这里按顺序取；缺省是夜景主题（DARK）的色板 */
+  /** Groups without a colour take colours from it in order; default: the palette of `DARK`. */
   palette?: readonly string[]
-  /** 问题描述（DataIssue.message）用的语言，缺省 'en'。code 不随语言变 */
+  /** Language of issue messages (`DataIssue.message`); default `'en'`. Codes do not change. */
   locale?: Locale
 }
 
 export interface ValidateOptions {
-  /** 问题描述（DataIssue.message）用的语言，缺省 'en'。code 不随语言变 */
+  /** Language of issue messages (`DataIssue.message`); default `'en'`. Codes do not change. */
   locale?: Locale
 }
 
 const groupKey = (grouping: string, group: string) => `${grouping}/${group}`
 
-/** 关系没写 id 时按“起点|类型|终点”生成 */
+/** Whether an issue makes the whole input unusable: an `error` without `id` (today only a wrong contract version). */
+export function isFatal(issue: DataIssue): boolean {
+  return issue.level === 'error' && issue.id === undefined
+}
+
+/** The id of a relation: its own, or generated as `source|type|target`. */
 export function relationId(r: RelationSpec): string {
   return r.id ?? `${r.source}|${r.type ?? ''}|${r.target}`
 }
 
-/**
- * 查一遍数据，把问题列出来。error 是这一项用不了（会被丢掉），warning 是能用但多半写错了。
- * 不抛异常：让调用的人决定怎么办。
- */
+/** Checks the data and lists the issues. An `error` with `id` makes that item unusable (it is dropped); an `error` without `id` (wrong contract version) makes the whole input unusable; a `warning` is usable but probably a mistake. Never throws. */
 export function validate(data: StrataData, opts: ValidateOptions = {}): DataIssue[] {
   const locale = opts.locale ?? DEFAULT_LOCALE
   const issues: DataIssue[] = []
@@ -141,14 +143,11 @@ export function validate(data: StrataData, opts: ValidateOptions = {}): DataIssu
   return issues
 }
 
-/**
- * 整理：出错的项丢掉（都在 issues 里），缺省补上，别的什么都不丢——收在父节点里的子节点、连到它们身上的关系都在。
- * - 层的分组维度缺省是第一个；
- * - 关系的 id 没写就生成，分量不合法的按 1 算；
- * - parent 不存在、不同层、成环的当作没有 parent。
- */
+/** Normalizes: drops broken items (all in `issues`), fills defaults, keeps everything else, including folded children and their relations. A layer's grouping defaults to the first; missing relation ids are generated and invalid weights count as 1; a `parent` that is missing, in another layer or in a cycle is ignored. */
 export function normalize(data: StrataData, opts: ResolveOptions = {}): { data: Normalized; issues: DataIssue[] } {
   const issues = validate(data, { locale: opts.locale })
+  // 整份数据用不了（契约版本不对）：什么都不收，交回一张空图和问题
+  if (issues.some(isFatal)) return { data: { groups: [], layers: [], nodes: [], relations: [] }, issues }
   const bad = new Set(issues.filter((i) => i.level === 'error' && i.id !== undefined).map((i) => `${i.code}:${i.id}`))
   const styles = { ...DEFAULT_NODE_STYLES, ...opts.nodeStyles }
   const palette = opts.palette ?? DARK.palette
@@ -223,13 +222,7 @@ export function normalize(data: StrataData, opts: ResolveOptions = {}): { data: 
   return { data: out, issues }
 }
 
-/**
- * 生成要画的那张图。expanded：展开了哪些节点（id）。
- * - 一个节点画不画出来：顶层的都画；子节点要它的父节点画出来、而且展开了。
- * - 没画出来的节点算在最近的画出来的祖先头上；连到它身上的关系上卷到那个祖先，
- *   同一对节点之间同类型的合成一条、分量相加；两端收进了同一个节点的不画。
- * - 两端同层的关系是那一层的边，两端不同层的是映射。
- */
+/** Builds the graph to draw for the expanded nodes (ids). Top-level nodes are drawn; a child is drawn when its parent is drawn and expanded. Hidden nodes count as their nearest drawn ancestor: their relations roll up to it, merged per node pair and type with weights added; relations whose ends fold into the same node are dropped. Relations within a layer become its edges, between layers mappings. */
 export function project(data: Normalized, expanded: Iterable<string> = []): Resolved {
   const open = expanded instanceof Set ? (expanded as Set<string>) : new Set(expanded)
   const byId = new Map(data.nodes.map((n) => [n.id, n]))
@@ -312,7 +305,7 @@ export function project(data: Normalized, expanded: Iterable<string> = []): Reso
   return resolved
 }
 
-/** 一步到位：整理，再按“全部收起”生成要画的图 */
+/** Normalizes and projects with everything collapsed, in one step. */
 export function resolve(data: StrataData, opts: ResolveOptions = {}): { resolved: Resolved; issues: DataIssue[] } {
   const n = normalize(data, opts)
   return { resolved: project(n.data), issues: n.issues }

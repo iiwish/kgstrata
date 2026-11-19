@@ -1,20 +1,19 @@
 // 主题：所有颜色、字体、雾的远近都在这里，组件不写死色值。
-// 主题按实例给：new Strata(host, { theme: { accent: '#ffd27a' } })，没给的项用夜景主题（DARK）的。
+// 主题按实例给：new Strata(host, { theme: { accent: '#ffd27a' } })，没给的项用夜景主题（DARK）的；创建后用 strata.setTheme 换。
 // 纯数据，不引入 three：不带渲染的入口（normalize 用色板）也用它。
 
-/** 一个主题的全部项 */
+/** All fields of a theme. */
 export interface Theme {
+  /** Background colour: the canvas clear colour and the base of the `backdrop` gradient. When `createTheme` gets `background` without `backdrop`, the gradient is derived from it, so a new background is one line. */
   readonly background: string
-  /** 色板：没写颜色的组按顺序从这里取 */
+  /** Palette: groups without a colour take colours from it in order. */
   readonly palette: readonly string[]
-  /** 背景：中间略亮，四周暗下去 */
+  /** The radial backdrop gradient (lighter centre, darker edges), drawn over the clear colour. */
   readonly backdrop: { readonly center: string; readonly mid: string; readonly edge: string }
-  // 雾：远处的东西更暗，和背景融在一起
-  readonly fogNear: number
-  readonly fogFar: number
+  /** Fog: far things get darker and blend into the background. Measured behind the camera target: starts at `near`, densest at `far` (world units, follows the camera every frame). */
+  readonly fog: { readonly near: number; readonly far: number }
   readonly plate: {
-    // 没有领域时的中性色；看变化时盘面退成的灰
-    readonly dot: string
+    // 看变化时盘面退成的灰
     readonly neutral: string
     // 平铺在盘边的层名
     readonly caption: string
@@ -22,38 +21,33 @@ export interface Theme {
   readonly label: {
     readonly primary: string
     readonly secondary: string
-    readonly muted: string
     readonly halo: string
   }
   // 选中、路径的强调色
   readonly accent: string
-  readonly root: string
-  /**
-   * 星等 0..5 的亮度。节点是饱和的平涂色点，各档差得不多：重要的靠大小和字号显出来，不靠更亮。
-   * 都不超过 1：泛光留给“你正在问的东西”（悬停、选中、路径、变化）。
-   */
+  /** Brightness per magnitude 0..5. Nodes are saturated flat dots and the steps are close; importance shows through size and label size. None above 1: glow is kept for what you are asking about (hover, selection, path, changes). */
   readonly magnitude: readonly number[]
-  /** 节点外面那圈小柔光的浓度，按星等。很淡：像珠子自己发的光，不是一团雾 */
+  /** Opacity of the soft glow around a node, per magnitude. Very faint. */
   readonly haloAlpha: readonly number[]
-  /** 光晕的大小（节点半径的倍数），按星等。光晕只在节点被点亮时出现，平时没有 */
+  /** Halo size (factor on the node radius), per magnitude. Halos appear only on lit nodes. */
   readonly haloSize: readonly number[]
-  /** 点阵的颜色：主图层和对齐过来的图层 */
+  /** Dot grid colours: the anchor layer and aligned layers. */
   readonly tone: { readonly primary: string; readonly aligned: string }
-  /** 节点的本色：领域色往白里兑多少 */
+  /** How much white is mixed into a node's group colour. */
   readonly starWhite: number
-  /** 线的中性色：层内的弧线、映射线都往它上面靠。颜色只留给节点，线不抢 */
+  /** Neutral line colour that relations and mappings lean towards; colour is kept for nodes. */
   readonly line: string
-  /** 层内的弧线带多少两端节点的颜色（其余是中性色） */
+  /** How much of the end nodes' colour relations within a layer take (the rest is neutral). */
   readonly lineTint: number
-  /** 没有领域的节点的本色（中性的浅蓝灰） */
+  /** Colour of nodes without a group (a neutral light blue-grey). */
   readonly ungrouped: string
-  /** 看变化时交给 kgdiff 的底色方案：变化的五类颜色、底子退成的灰由 kgdiff 按它出 */
+  /** The scheme given to kgdiff while comparing: the five change colours and the grey of the background follow it. */
   readonly diffScheme: 'dark' | 'light'
   readonly font: string
   readonly mono: string
 }
 
-/** 每一项都可以不写；数组（色板、按星等的几档）整个替换，不按下标合并 */
+/** Every field optional; arrays (palette, per-magnitude steps) replace as a whole, they are not merged by index. */
 export type DeepPartial<T> = T extends readonly unknown[] ? T : T extends object ? { -readonly [K in keyof T]?: DeepPartial<T[K]> } : T
 
 function deepFreeze<T>(v: T): T {
@@ -64,27 +58,23 @@ function deepFreeze<T>(v: T): T {
   return v
 }
 
-/** 夜景主题，缺省就是它。冻住的：要改用 createTheme */
+/** The dark theme, the default. Frozen: change it with `createTheme`. */
 export const DARK: Theme = deepFreeze({
   background: '#070a13',
   palette: ['#58c6ff', '#46d8a8', '#a590ff', '#ecb556', '#ee9772', '#dd94c2', '#78dcec', '#bfe86a', '#8fa8ff', '#e3c08a'],
   backdrop: { center: '#0e1526', mid: '#080b15', edge: '#030408' },
-  fogNear: 70,
-  fogFar: 190,
+  fog: { near: 12, far: 125 },
   plate: {
-    dot: '#c3cdf0',
     neutral: '#5c6680',
     caption: '#8f9bbd',
   },
   label: {
     primary: '#f2f4f9',
     secondary: '#d5dbe8',
-    muted: '#a5aec0',
     halo: '#04060a',
   },
   // 冰蓝白光
   accent: '#9fe6ff',
-  root: '#e7eaf0',
   magnitude: [1.0, 1.0, 0.98, 0.95, 0.92, 0.88],
   haloAlpha: [0.17, 0.15, 0.13, 0.11, 0.1, 0.09],
   haloSize: [3.0, 3.0, 2.9, 2.8, 2.7, 2.6],
@@ -116,10 +106,33 @@ function merge(base: unknown, over: unknown): unknown {
   return base
 }
 
-/** 在夜景主题上改几项，得到一个新主题。不写就是 DARK 的一份拷贝 */
+/** A new theme from overrides on `DARK` (a copy of `DARK` without them). With `background` and no `backdrop`, the gradient is derived from `background` (`backdropOf`) instead of keeping DARK's. */
 export function createTheme(overrides: DeepPartial<Theme> = {}): Theme {
-  return merge(DARK, overrides) as Theme
+  const theme = merge(DARK, overrides) as Theme
+  if (overrides.background === undefined || overrides.backdrop !== undefined) return theme
+  return { ...theme, backdrop: backdropOf(theme.background) }
 }
 
-/** 层间距（世界单位）：和盘面半径差不多大，斜着看时两层在屏幕上不叠在一起；映射线是垂直的，长一点不会乱 */
+/** #rgb / #rrggbb → [r, g, b] 0..255；认不得是 null */
+function parseHex(hex: string): [number, number, number] | null {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex.trim())
+  if (!m) return null
+  const h = m[1].length === 3 ? [...m[1]].map((c) => c + c).join('') : m[1]
+  return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number]
+}
+
+/** 往 to 兑 t（0..1），写回 #rrggbb */
+function mixRgb(a: [number, number, number], to: number, t: number): string {
+  return '#' + a.map((v) => Math.round(v + (to - v) * t).toString(16).padStart(2, '0')).join('')
+}
+
+/** Derives a backdrop gradient from a background colour: a little lighter in the centre, darker at the edges (depth, not a glow). Unknown colours (not `#rgb` / `#rrggbb`) give DARK's. */
+export function backdropOf(background: string): Theme['backdrop'] {
+  const c = parseHex(background)
+  if (!c) return { ...DARK.backdrop }
+  const dark = (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255 < 0.5
+  return { center: mixRgb(c, 255, dark ? 0.04 : 0.5), mid: mixRgb(c, 0, 0), edge: mixRgb(c, 0, dark ? 0.55 : 0.06) }
+}
+
+/** Distance between layers in world units. */
 export const LAYER_GAP = 20

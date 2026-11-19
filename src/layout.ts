@@ -139,27 +139,27 @@ export function layoutStrata(data: Resolved, opts: LayoutOptions = {}): StrataLa
     between[b][a]++
   }
   // 基准：指定的那张图；没指定就挑和别的图映射最多的那张——它是别的图都要对上的那一张。一样多时取靠前的
-  let primary = opts.primary !== undefined ? layers.findIndex((l) => l.id === opts.primary) : -1
-  if (primary < 0) {
+  let anchorIdx = opts.anchor !== undefined ? layers.findIndex((l) => l.id === opts.anchor) : -1
+  if (anchorIdx < 0) {
     let most = -1
     layers.forEach((_, i) => {
       const c = between[i].reduce((x, y) => x + y, 0)
       if (c > most) {
         most = c
-        primary = i
+        anchorIdx = i
       }
     })
   }
 
   // 扇区：张角 ∝ max(成员数, 1.5)，从 -π/2 逆时针排
-  const primaryNodes = primary >= 0 ? tops[primary].filter((n) => nodeLayer.get(n.id) === primary) : []
+  const anchorNodes = anchorIdx >= 0 ? tops[anchorIdx].filter((n) => nodeLayer.get(n.id) === anchorIdx) : []
   const counts = data.groups.map(() => 0)
-  for (const n of primaryNodes) {
+  for (const n of anchorNodes) {
     const gi = n.group !== undefined ? groupIndex.get(n.group) : undefined
     if (gi !== undefined) counts[gi]++
   }
   // 扇区只分给主图层那个分组维度里的组：别的维度的组（比如表按库分的那些）不占地方
-  const scope = primary >= 0 ? layers[primary].grouping : undefined
+  const scope = anchorIdx >= 0 ? layers[anchorIdx].grouping : undefined
   const weights = counts.map((c, i) => (scope === undefined || data.groups[i].grouping === undefined || data.groups[i].grouping === scope ? Math.max(c, 1.5) : 0))
   const totalW = weights.reduce((a, b) => a + b, 0) || 1
   const sectors: { angle: number; span: number }[] = []
@@ -179,8 +179,8 @@ export function layoutStrata(data: Resolved, opts: LayoutOptions = {}): StrataLa
   const linkClass = new Map<string, LinkClass>()
 
   // ── 主图层 ──
-  if (primary >= 0) {
-    layoutPrimary(primaryNodes, intraEdges[primary], {
+  if (anchorIdx >= 0) {
+    layoutPrimary(anchorNodes, intraEdges[anchorIdx], {
       R,
       groupIndex,
       sectors,
@@ -193,7 +193,7 @@ export function layoutStrata(data: Resolved, opts: LayoutOptions = {}): StrataLa
 
   // 领域的重心按主图层的声明成员算；没有成员的领域落在扇区中线 0.5R 处
   const territories: GroupTerritory[] = data.groups.map((g, i) => {
-    const members = primaryNodes.filter((n) => n.group === g.id).map((n) => pos.get(n.id)!)
+    const members = anchorNodes.filter((n) => n.group === g.id).map((n) => pos.get(n.id)!)
     const s = sectors[i]
     const c = centroidOf(members) ?? { x: Math.cos(s.angle) * 0.5 * R, z: Math.sin(s.angle) * 0.5 * R }
     let spread = 0
@@ -203,11 +203,11 @@ export function layoutStrata(data: Resolved, opts: LayoutOptions = {}): StrataLa
 
   // ── 其余层 ──
   // 每次挑和已经摆好的图映射最多的那张，这样它总有东西可以对齐
-  const ref = primary >= 0 ? primary : 0
+  const ref = anchorIdx >= 0 ? anchorIdx : 0
   const order: number[] = []
   {
-    const placedGraphs = primary >= 0 ? [primary] : []
-    const rest = layers.map((_, i) => i).filter((i) => i !== primary)
+    const placedGraphs = anchorIdx >= 0 ? [anchorIdx] : []
+    const rest = layers.map((_, i) => i).filter((i) => i !== anchorIdx)
     while (rest.length > 0) {
       const score = (i: number) => placedGraphs.reduce((x, p) => x + between[i][p], 0)
       rest.sort((a, b) => score(b) - score(a) || Math.abs(a - ref) - Math.abs(b - ref) || a - b)
@@ -266,7 +266,7 @@ export function layoutStrata(data: Resolved, opts: LayoutOptions = {}): StrataLa
     radii.push(Math.max(maxR + 2.5, 0.45 * R, 8))
   })
 
-  const layout: StrataLayout = { nodes: placed, radii, groups: territories, primary, blocks, linkClass }
+  const layout: StrataLayout = { nodes: placed, radii, groups: territories, anchor: anchorIdx, blocks, linkClass }
   return layers.some((l) => l.nodes.some((n) => n.parent !== undefined)) ? placeChildren(layout, data) : layout
 }
 
@@ -275,11 +275,7 @@ export function layoutStrata(data: Resolved, opts: LayoutOptions = {}): StrataLa
 /** 子节点画多大（世界单位） */
 const CHILD_R = 0.2
 
-/**
- * 在一份摆好的布局上，把展开出来的子节点围着父节点摆一圈。顶层节点的位置一点不动：
- * 展开、收起不会让图重新洗牌。base 应该是“全部收起”时的布局，data 是现在要画的图。
- * 子节点跟着父节点算在同一个对应块里；连到子节点上的映射线，归类跟着收起时那条上卷的映射。
- */
+/** Adds expanded children around their parents on a laid-out graph. Top-level positions do not move, so expanding never reshuffles the picture. `base` is the collapsed layout, `data` the graph drawn now. Children join their parent's mapping block; mappings to children take the class of the rolled-up mapping. */
 export function placeChildren(base: StrataLayout, data: Resolved): StrataLayout {
   const nodes = new Map(base.nodes)
   const radii = [...base.radii]

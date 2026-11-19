@@ -3,9 +3,12 @@ import { describe, expect, it, vi } from 'vitest'
 import type { HeroInfo, HoverInfo, LayerInfo, Strata } from '../src/engine'
 import { StrataError, message } from '../src/locale'
 import { Emitter, type StrataEvents, type StrataPlugin } from '../src/plugin'
-import { StrataCanvas, canvasFallback } from '../src/react/canvas'
+import { CANVAS_CSS, StrataCanvas, canvasFallback } from '../src/react/canvas'
+import { themeRule, themeVars } from '../src/react/store'
+import { DARK, createTheme } from '../src/theme'
 import { useStrata } from '../src/react/context'
 import { DiffPanel, changesByLayer } from '../src/react/diff'
+import { familyColors } from '../src/diff'
 import { FollowToggle, HeroMixSlider, LayerList, NodeTip, SpreadSlider, ViewButtons } from '../src/react/panels'
 import { PathList, nodeInfoFrom } from '../src/react/path'
 import {
@@ -15,11 +18,15 @@ import {
   createStateStore,
   heroPair,
   layerClickTarget,
+  layerCount,
   layerMarkOpacity,
   layerPressed,
   mountStrata,
   sameValue,
   stepStatus,
+  textFor,
+  tipLines,
+  zeroHeightWarning,
   type StrataSource,
 } from '../src/react/store'
 import type { StrataDiff } from '../src/diff'
@@ -29,8 +36,8 @@ import type { StrataData } from '../src/types'
 // <StrataCanvas> 真正创建引擎、换数据、销毁要 WebGL 和 DOM，这里没测（在效果页里手动过）。
 
 const LAYERS: LayerInfo[] = [
-  { id: 'onto', name: '本体', visible: true },
-  { id: 'table', name: '物理表', visible: false },
+  { id: 'onto', name: '本体', visible: true, count: 9 },
+  { id: 'table', name: '物理表', visible: false, count: 22 },
 ]
 const DUAL: HeroInfo = { id: 'onto', follow: true, mix: { onto: 1, table: 0 } }
 const SINGLE: HeroInfo = { id: null, follow: false, mix: {} }
@@ -52,6 +59,17 @@ describe('层列表', () => {
     expect(out.match(/aria-pressed="true"/g)?.length).toBe(2) // 主角那行 + 显示着的眼睛
     expect(out).toContain('disabled=""')
     expect(out).toContain('type="button"')
+  })
+
+  it('计数缺省是每层的顶层节点数；给了 counts 用它，false 不出', () => {
+    expect(layerCount(undefined, LAYERS[1])).toBe(22)
+    expect(layerCount({ table: 61 }, LAYERS[1])).toBe(61)
+    expect(layerCount(new Map([['onto', 3]]), LAYERS[1])).toBe(undefined)
+    expect(layerCount(false, LAYERS[1])).toBe(undefined)
+    const out = html(<LayerList layers={LAYERS} hero={DUAL} focus={null} locale="zh-CN" />)
+    expect(out).toContain('<em class="kgs-layer-count">22</em>')
+    expect(out).toContain('<em class="kgs-layer-count">9</em>')
+    expect(html(<LayerList layers={LAYERS} hero={DUAL} focus={null} counts={false} />)).toContain('<em class="kgs-layer-count"></em>')
   })
 
   it('英文；徽标可以一直出', () => {
@@ -93,7 +111,7 @@ describe('其他核心面板', () => {
 
   it('主次滑杆：正好两层、分主次时出，值是第二层的分量', () => {
     expect(heroPair(DUAL, LAYERS)?.map((l) => l.id)).toEqual(['onto', 'table'])
-    expect(heroPair(DUAL, [...LAYERS, { id: 'm', name: 'm', visible: true }])).toBe(null)
+    expect(heroPair(DUAL, [...LAYERS, { id: 'm', name: 'm', visible: true, count: 1 }])).toBe(null)
     expect(heroPair(SINGLE, LAYERS)).toBe(null)
     expect(html(<HeroMixSlider hero={SINGLE} layers={LAYERS} />)).toBe('')
     const out = html(<HeroMixSlider hero={{ ...DUAL, mix: { onto: 0.3, table: 0.7 } }} layers={LAYERS} locale="zh-CN" />)
@@ -116,17 +134,25 @@ describe('其他核心面板', () => {
     expect(html(<ViewButtons locale="en" />)).toContain('>Overview</button>')
   })
 
-  it('悬停提示：名字、层 · 组、能展开的写字段数', () => {
-    const info: HoverInfo = { id: 't', label: 'orders', layer: '物理表', group: '订单', folds: 12, expanded: false, x: 100, y: 50 }
+  it('悬停提示：名字、层名 · 组名、能展开的写“N 个字段”（名词按节点类型）', () => {
+    const info: HoverInfo = { id: 't', label: 'orders', layer: 'table', layerName: '物理表', group: 'domain/order', groupName: '订单', folds: 12, childNoun: '字段', expanded: false, pointer: { x: 100, y: 50 } }
     expect(html(<NodeTip info={null} />)).toBe('')
     const zh = html(<NodeTip info={info} locale="zh-CN" />)
     expect(zh).toContain('role="tooltip"')
     expect(zh).toContain('left:116px;top:64px')
+    // 显示的是名字，不是 id
     expect(zh).toContain('<b>orders</b><span>物理表 · 订单</span><span>12 个字段 · 双击展开</span>')
     expect(html(<NodeTip info={{ ...info, expanded: true }} locale="zh-CN" />)).toContain('<span>双击收起</span>')
-    expect(html(<NodeTip info={info} locale="en" />)).toContain('12 fields · double-click to expand')
+    expect(html(<NodeTip info={{ ...info, childNoun: 'fields' }} locale="en" />)).toContain('12 fields · double-click to expand')
     // 没有可展开的：不出第三行
-    expect(html(<NodeTip info={{ ...info, folds: 0, group: null }} locale="zh-CN" />)).toContain('<span>物理表</span></div>')
+    expect(html(<NodeTip info={{ ...info, folds: 0, group: null, groupName: null }} locale="zh-CN" />)).toContain('<span>物理表</span></div>')
+  })
+
+  it('悬停提示：没配名词时是中性的说法', () => {
+    const info: HoverInfo = { id: 'c', label: '客户', layer: 'onto', layerName: '本体', group: null, groupName: null, folds: 3, childNoun: null, expanded: false, pointer: { x: 0, y: 0 } }
+    expect(tipLines(info, textFor(null, 'zh-CN'))).toEqual({ where: '本体', fold: '内含 3 项 · 双击展开' })
+    expect(tipLines(info, textFor(null, 'en'))).toEqual({ where: '本体', fold: '3 inside · double-click to expand' })
+    expect(tipLines({ ...info, folds: 0 }, textFor(null, 'en')).fold).toBe(null)
   })
 })
 
@@ -147,7 +173,7 @@ describe('路径面板', () => {
   ]
 
   it('展开正在看的那个问题：序号、名字、层；点亮的、跳过的', () => {
-    const out = html(<PathList paths={paths} path={null} active="p1" live={{ ids: ['a', 'c'], reached: 1 }} nodeInfo={nodeInfoFrom(data)} locale="zh-CN" />)
+    const out = html(<PathList paths={paths} path={null} active="p1" progress={{ ids: ['a', 'c'], reached: 1 }} nodeInfo={nodeInfoFrom(data)} locale="zh-CN" />)
     expect(out).toContain('aria-label="问题"')
     expect(out).toContain('class="kgs-path kgs-on"')
     expect(out).toContain('aria-expanded="true"')
@@ -157,7 +183,7 @@ describe('路径面板', () => {
     expect(out).toContain('<li class="kgs-step"><b>③</b><span>orders</span><em>物理表</em></li>')
     // 没展开的问题不列步骤
     expect(out.match(/kgs-steps/g)?.length).toBe(1)
-    expect(html(<PathList paths={paths} path={null} active="p1" live={{ ids: ['a'], reached: 0 }} nodeInfo={nodeInfoFrom(data)} locale="en" />)).toContain(
+    expect(html(<PathList paths={paths} path={null} active="p1" progress={{ ids: ['a'], reached: 0 }} nodeInfo={nodeInfoFrom(data)} locale="en" />)).toContain(
       'title="This step is in a hidden layer and was skipped"',
     )
   })
@@ -173,24 +199,22 @@ describe('路径面板', () => {
 })
 
 describe('看变化的面板', () => {
-  const hunk = (index: number, family: string, nodes: number[], start: number, end: number) => ({
-    index,
+  const hunk = (index: number, family: string, layer: string, start: number, end: number) => ({
     id: `h${index}`,
     kind: 'k',
     family,
     title: `变化 ${index}`,
     subtitle: index === 0 ? '说明' : '',
-    nodes,
+    nodes: [`n${index}`],
     context: [],
     center: [0, 0],
-    layer: 0,
+    layer,
     radius: 1,
     start,
     end,
   })
   const diff = {
-    base: { nodes: [{ layer: 0 }, { layer: 1 }, { layer: 1 }], edges: [] },
-    hunks: [hunk(0, 'added', [0], 0, 100), hunk(1, 'added', [1], 100, 200), hunk(2, 'removed', [2], 200, 300)],
+    hunks: [hunk(0, 'added', 'onto', 0, 100), hunk(1, 'added', 'table', 100, 200), hunk(2, 'removed', 'table', 200, 300)],
     duration: 300,
     stats: { added: 2, removed: 1, changed: 0 },
   } as unknown as StrataDiff
@@ -223,9 +247,15 @@ describe('看变化的面板', () => {
     expect(html(<DiffPanel diff={null} current={diff} locale="en" />)).toMatch(/data-family="added" style="color:#[0-9a-f]{6}/i)
   })
 
-  it('每层有几处变化：算在第一个节点所在的层', () => {
-    expect(changesByLayer(diff, [{ id: 'onto' }, { id: 'table' }])).toEqual({ onto: 1, table: 2 })
-    expect(changesByLayer(null, [])).toEqual({})
+  it('每层有几处变化：算在它主要落在的那一层（层的 id）', () => {
+    expect({ ...changesByLayer(diff) }).toEqual({ onto: 1, table: 2 })
+    expect({ ...changesByLayer(null) }).toEqual({})
+  })
+
+  it('浅色方案的主题：缺省颜色跟着 diffScheme', () => {
+    expect(familyColors('light').added.base).not.toBe(familyColors('dark').added.base)
+    expect(familyColors({ diffScheme: 'light' })).toEqual(familyColors('light'))
+    expect(familyColors()).toEqual(familyColors('dark'))
   })
 })
 
@@ -235,9 +265,9 @@ describe('状态仓库', () => {
     const events = new Emitter<StrataEvents>()
     const s = {
       layers: LAYERS,
-      heroInfo: DUAL,
+      hero: DUAL,
       expanded: [] as string[],
-      getView: () => ({ focus: null }),
+      focus: null,
       on: events.on.bind(events),
     }
     return { s: s as unknown as StrataSource, raw: s, events }
@@ -384,7 +414,95 @@ describe('<StrataCanvas>', () => {
         <Probe />
       </StrataCanvas>,
     )
-    expect(out).toBe('<div class="kgs-canvas stage" style="height:300px"></div><i>no-instance</i>')
+    // 外层是定位容器：自带缺省规则（特异度 0 的 <style>），画布的宿主铺满它，children 在同一个容器里盖在画布上
+    expect(out).toBe(
+      `<div class="kgs-canvas stage" style="height:300px"><style>${CANVAS_CSS}</style><div class="kgs-canvas-host" style="position:absolute;inset:0"></div><i>no-instance</i></div>`,
+    )
+    expect(CANVAS_CSS).toBe(':where(.kgs-canvas){position:relative;width:100%;height:100%;min-height:320px}')
     expect(create).not.toHaveBeenCalled()
+  })
+
+  it('服务端渲染不打印警告（React 18 会为 useLayoutEffect 警告：服务端换成了 useEffect）', async () => {
+    const { renderToString } = await import('react-dom/server')
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const out = renderToString(
+        <StrataCanvas data={null}>
+          <LayerList />
+          <NodeTip />
+        </StrataCanvas>,
+      )
+      expect(out).toContain('kgs-canvas-host')
+      expect(error).not.toHaveBeenCalled()
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      error.mockRestore()
+      warn.mockRestore()
+    }
+  })
+
+  it('不给 style 时也有定位和尺寸（不靠 styles.css）', () => {
+    const out = html(<StrataCanvas data={null}><i /></StrataCanvas>)
+    expect(out.startsWith('<div class="kgs-canvas"><style>:where(.kgs-canvas){position:relative;')).toBe(true)
+  })
+
+  it('宿主高度为 0 时的提醒走语言表', () => {
+    expect(zeroHeightWarning(0, textFor(null, 'en'))).toBe(message('en', 'warn.canvas-zero-height'))
+    expect(zeroHeightWarning(0, textFor(null, 'zh-CN'))).toMatch(/高度是 0/)
+    expect(zeroHeightWarning(480, textFor(null, 'en'))).toBe(null)
+  })
+})
+
+describe('语言和文案覆盖', () => {
+  it('跟着实例的语言时带上实例的覆盖；面板给了别的语言就不带', () => {
+    const s = { locale: 'zh-CN', text: (k: string) => `override:${k}` }
+    expect(textFor(s as never)('ui.layers')).toBe('override:ui.layers')
+    expect(textFor(s as never, 'zh-CN')('ui.layers')).toBe('override:ui.layers')
+    expect(textFor(s as never, 'en')('ui.layers')).toBe('Layers')
+    expect(textFor(null)('ui.layers')).toBe('Layers')
+  })
+
+  it('locale 状态：语言和覆盖一起读，换了覆盖（语言没变）也通知', () => {
+    const events = new Emitter<StrataEvents>()
+    const raw = { locale: 'en', messages: {} as Record<string, string>, on: events.on.bind(events) }
+    const store = createStateStore(raw as unknown as StrataSource, 'locale')
+    const cb = vi.fn()
+    store.subscribe(cb)
+    expect(store.getSnapshot()).toEqual({ locale: 'en', messages: {} })
+    raw.messages = { 'ui.layers': 'Strata' }
+    events.emit('locale', 'en')
+    expect(cb).toHaveBeenCalledTimes(1)
+    expect(store.getSnapshot().messages).toEqual({ 'ui.layers': 'Strata' })
+    raw.locale = 'zh-CN'
+    events.emit('locale', 'zh-CN')
+    expect(store.getSnapshot().locale).toBe('zh-CN')
+    expect(createStateStore(null, 'locale').getSnapshot()).toEqual({ locale: 'en', messages: {} })
+    expect(createStateStore(null, 'theme').getSnapshot()).toBe(null)
+  })
+})
+
+describe('主题 → 面板的 CSS 变量', () => {
+  it('只出和 DARK 不一样的变量：没改主题时一个都不出', () => {
+    expect(themeVars(DARK)).toEqual({})
+    expect(themeVars(createTheme())).toEqual({})
+    expect(themeVars(null)).toEqual({})
+  })
+
+  it('换个背景色：面板的底子跟着变，文字的颜色不动', () => {
+    const v = themeVars(createTheme({ background: '#ffffff' }))
+    expect(v).toEqual({ '--kgs-bg': '#ffffff', '--kgs-overlay': 'rgba(255, 255, 255, 0.72)' })
+    expect(themeVars(createTheme({ accent: '#ff0000', label: { primary: '#000' } }))).toMatchObject({
+      '--kgs-accent': '#ff0000',
+      '--kgs-accent-rgb': '255, 0, 0',
+      '--kgs-text': '#000',
+      '--kgs-border': 'rgba(0, 0, 0, 0.07)',
+    })
+  })
+
+  it('写成特异度 0 的规则：容器上自己写的 class、style 盖得过它；值里不能混进别的规则', () => {
+    expect(themeRule('[data-kgs-scope="a"]', { '--kgs-bg': '#fff' })).toBe(':where([data-kgs-scope="a"]){--kgs-bg:#fff}')
+    expect(themeRule('.x', {})).toBe('')
+    expect(themeRule('.x', { '--kgs-bg': 'red;}body{color:red' })).toBe(':where(.x){--kgs-bg:redbodycolor:red}')
   })
 })

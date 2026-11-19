@@ -2,3 +2,8 @@
 # and use its built output (dist/), so run `pnpm build` at the root before building them.
 packages:
   - examples/*
+minimumReleaseAgeExclude:
+  - '@kgdiff/compute@0.12.3'
+  - '@kgdiff/core@0.12.3'
+  - '@kgdiff/layout@0.12.3'
+  - '@kgdiff/scene@0.12.3'

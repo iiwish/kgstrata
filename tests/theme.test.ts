@@ -13,7 +13,7 @@ import { Nodes } from '../src/renderer/nodes'
 import { Plates } from '../src/renderer/plates'
 import { normalize, project } from '../src/resolve'
 import { Styler } from '../src/styler'
-import { DARK, createTheme } from '../src/theme'
+import { DARK, backdropOf, createTheme } from '../src/theme'
 
 // 主题按实例：createTheme 的结果互不相干；雾一个渲染器一份。
 // 要 WebGL 上下文的部分（整个 StrataRenderer 跑起来、两个实例同时画）在这里测不了，只测不碰上下文的那些零件。
@@ -40,7 +40,32 @@ describe('主题', () => {
     expect(t.palette).toEqual(['#111111'])
     expect(t.magnitude).toEqual([1, 1])
     expect(t.backdrop).toEqual(DARK.backdrop)
-    expect(t.fogNear).toBe(DARK.fogNear)
+    expect(t.fog).toEqual(DARK.fog)
+  })
+
+  it('只给 background：背景渐变按它推出来；给了 backdrop 就用给的', () => {
+    const white = createTheme({ background: '#ffffff' })
+    expect(white.backdrop).toEqual(backdropOf('#ffffff'))
+    expect(white.backdrop.mid).toBe('#ffffff')
+    expect(white.backdrop).not.toEqual(DARK.backdrop)
+    // 亮背景：四周只压暗一点
+    expect(white.backdrop.edge).toBe('#f0f0f0')
+    // 暗背景：四周压得多，中间提一点
+    const dark = backdropOf('#101010')
+    expect(dark).toEqual({ center: '#1a1a1a', mid: '#101010', edge: '#070707' })
+    expect(createTheme({ background: '#fff', backdrop: { center: '#123456' } }).backdrop).toEqual({ ...DARK.backdrop, center: '#123456' })
+    // 认不得的颜色、没给 background：DARK 的渐变
+    expect(backdropOf('rgb(0, 0, 0)')).toEqual(DARK.backdrop)
+    expect(createTheme({ accent: '#ff0000' }).backdrop).toEqual(DARK.backdrop)
+  })
+
+  it('雾的远近是相对镜头距离的：主题里改了每帧都起作用', () => {
+    const fog = createFog(0, 0)
+    placeFog(fog, 100, createTheme({ fog: { near: 30 } }).fog)
+    expect(fog.uFogNear.value).toBe(130)
+    expect(fog.uFogFar.value).toBe(100 + DARK.fog.far)
+    placeFog(fog, 50, DARK.fog)
+    expect([fog.uFogNear.value, fog.uFogFar.value]).toEqual([62, 175])
   })
 
   it('两个 createTheme 的结果互不影响，也不影响 DARK', () => {
@@ -69,7 +94,7 @@ describe('主题', () => {
     const groupsWithoutColor = new Set((data.groupings ?? []).flatMap((g) => g.groups.filter((x) => !x.color).map((x) => `${g.id}/${x.id}`)))
     expect(groupsWithoutColor.size).toBeGreaterThan(0)
     for (const g of r.groups) if (groupsWithoutColor.has(g.id)) expect(palette).toContain(g.color)
-    expect(m.renderer.plates.plates.map((p) => p.tone)).toEqual(m.renderer.plates.plates.map((p) => (p.index === m.renderer.primary ? '#010203' : '#040506')))
+    expect(m.renderer.plates.plates.map((p) => p.tone)).toEqual(m.renderer.plates.plates.map((p) => (p.index === m.renderer.anchor ? '#010203' : '#040506')))
     expect(d.renderer.plates.plates.every((p) => p.tone === DARK.tone.primary)).toBe(true)
     // starWhite 0：节点本色就是组的颜色
     const i = m.base.nodes.findIndex((n) => n.group >= 0)
@@ -94,8 +119,8 @@ describe('雾：一个渲染器一份', () => {
     return { nodes, edges, marks, plates, uniforms }
   }
 
-  it('初值是主题里的远近；两份互不影响', () => {
-    const a = createFog(DARK.fogNear, DARK.fogFar)
+  it('初值原样；按镜头的距离摆；两份互不影响', () => {
+    const a = createFog(70, 190)
     const b = createFog(10, 20)
     expect(a.uFogNear.value).toBe(70)
     expect(a.uFogFar.value).toBe(190)
@@ -169,5 +194,29 @@ describe('拿不到 WebGL', () => {
     } catch (e) {
       expect((e as StrataError).code).toBe('webgl-unavailable')
     }
+  })
+})
+
+describe('主题的每一项都有人读', () => {
+  const SOURCES = import.meta.glob<string>('../src/**/*.{ts,tsx}', { query: '?raw', import: 'default', eager: true })
+  const code = Object.entries(SOURCES)
+    .filter(([f]) => !f.endsWith('/theme.ts'))
+    .map(([, c]) => c)
+    .join('\n')
+
+  it('没人读的项删掉了（root、label.muted、plate.dot）', () => {
+    expect('root' in DARK).toBe(false)
+    expect('muted' in DARK.label).toBe(false)
+    expect('dot' in DARK.plate).toBe(false)
+  })
+
+  it('剩下的每一项（叶子）在库的源码里都读到（.<路径>）', () => {
+    const paths: string[] = []
+    for (const [k, v] of Object.entries(DARK)) {
+      if (v && typeof v === 'object' && !Array.isArray(v)) for (const sub of Object.keys(v)) paths.push(`${k}.${sub}`)
+      else paths.push(k)
+    }
+    const unread = paths.filter((p) => !new RegExp(`\\.${p.replace('.', '\\.')}\\b`).test(code))
+    expect(unread).toEqual([])
   })
 })

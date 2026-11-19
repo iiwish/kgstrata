@@ -13,163 +13,213 @@
 //
 // 这个文件只放类型和两个小工具（事件、视图状态的登记），不引入渲染器，可以单独测。
 
-import type { HoverInfo, HeroInfo, LayerInfo, StrataView } from './engine.js'
-import { DEFAULT_LOCALE, message, StrataError, type Locale } from './locale.js'
+import type { HoverInfo, HeroInfo, LayerInfo, SelectInfo, StrataView } from './engine/types.js'
+import { DEFAULT_LOCALE, message, StrataError, type Locale, type MessageKey } from './locale.js'
 import type { Model } from './model.js'
 import type { RendererBase, StrataRenderer } from './renderer/index.js'
 import type { Spotlight } from './styler.js'
 import type { Theme } from './theme.js'
 import type { Looks, Normalized, Resolved, StrataData, StrataLayout } from './types.js'
 
-/** 插件：install 拿到核心给的能力，返回它自己的接口（strata.use 原样交回去，类型是全的） */
+/** A plugin: `install` gets what the core offers and returns the plugin's API (`strata.use` hands it back, fully typed). */
 export interface StrataPlugin<Api> {
-  /** 名字：同一个引擎上同名的插件只能装一个；模式、视图状态都记在这个名字下 */
+  /** Name. Only one plugin per name can be installed on an instance; modes and view slots are recorded under it. */
   readonly name: string
   install(ctx: StrataContext): Api
 }
 
-/** 每一帧的时间 */
+/** Timing of one frame. */
 export interface FrameInfo {
-  /** 引擎的时钟（秒），从引擎创建起累计 */
+  /** The engine clock in seconds, since the instance was created. */
   time: number
-  /** 这一帧走了多少秒（封顶 0.05） */
+  /** Seconds since the last frame (at most 0.05). */
   dt: number
 }
 
-/** 叠加层：没有模式接管时，在核心的样子上叠东西 */
+/** An overlay: draws on top of the core's own look while no mode has taken over. */
 export interface StrataOverlay {
-  /** ① 之前问一次：这一帧要强调的一串节点（交给核心的样式去压暗其余的）。没有就 null。几个叠加层都给时，后装的说了算 */
+  /** Asked before step ① of each frame: a sequence of nodes to emphasize (the core's style dims the rest), or `null`. With several overlays the last installed wins. */
   spotlight?(): Spotlight | null
-  /** ② 样式算完以后往上叠：改强调的节点的序号、名字，写 Looks.extra 里自己那一份 */
+  /** Step ②, after the style: change the emphasized nodes' ranks and labels, write your own part of `Looks.extra`. */
   paint?(looks: Looks, frame: FrameInfo): void
 }
 
-/** 模式：接管这一帧画什么 */
+/** A mode: takes over what each frame draws. */
 export interface StrataMode {
-  /** 这张图的模型：层的列表、主次、悬停信息、镜头都按它 */
+  /** The model of this picture: layers, hero, hover info and shots follow it. */
   readonly model: Model
-  /** 交给渲染器的底子。节点和边可以和 model 的不一样（看变化时是两版的合集），下标和 looks 里的对齐 */
+  /** What the renderer draws. Nodes and edges may differ from `model` (the union of two versions while comparing); indexes match those of `looks`. */
   readonly base: RendererBase
-  /** ① 这一帧的样子 */
+  /** Step ①: this frame's look. */
   looks(frame: FrameInfo): Looks
-  /** 指针指着第 i 个节点（-1 = 没有） */
+  /** The pointer is over node `i` (`-1` = none). */
   hover?(i: number): void
-  /** 点中第 i 个节点（-1 = 点在空白处） */
+  /** Node `i` was clicked (`-1` = empty space). */
   select?(i: number): void
-  /** 被核心收回了：换了数据，或者别的插件的模式接管。插件自己调 release 时不会收到 */
+  /** The core took the frame back: new data, or another plugin's mode took over. Not called when the plugin releases it itself. */
   released?(): void
 }
 
-/** takeOver 的回执 */
+/** What `takeOver` returns. */
 export interface ModeHandle {
-  /** 还是不是它在接管 */
+  /** Whether this mode is still in charge. */
   readonly active: boolean
   /**
-   * 交还给核心的全景。rebuild：全景按现在的展开状态重新生成（接管期间展开、收起过节点时要），选中清掉。
-   * 已经不在接管了就什么也不做。
+   * Hands the frame back to the core's normal view. `rebuild`: regenerate the normal view for the
+   * current expanded nodes (needed when nodes were expanded or collapsed meanwhile); clears the selection.
+   * Does nothing when no longer in charge.
    */
   release(opts?: { rebuild?: boolean }): void
 }
 
-/** 核心的状态变了，通知插件：data 换了数据；model 全景的模型重建了（展开、收起）；hidden 隐藏的层变了；mode 有模式接管了 */
-export type StrataChange = 'data' | 'model' | 'hidden' | 'mode'
+/**
+ * What changed in the core, as `onChange` reports it: `data` new data; `model` the normal view's model
+ * was rebuilt (expand, collapse, theme); `hidden` hidden layers changed; `mode` a mode took over; `theme`
+ * the theme changed (`setTheme`: rebuild your own models and colours from `ctx.theme`).
+ */
+export type StrataChange = 'data' | 'model' | 'hidden' | 'mode' | 'theme'
 
-/** 盘面上的一个点：第几层、盘面坐标。核心按层现在的高度和缩放换成世界坐标 */
+/** A point on a plate: layer index and plate coordinates. The core converts it to world space with the layer's current height and scale. */
 export interface PlatePoint {
   layer: number
   x: number
   z: number
 }
 
-/** 视图状态里插件自己的那一段 */
+/** A plugin's own part of the view state. */
 export interface ViewSlot<V> {
   get(): V
-  /** setView 里给了这一项（不是 undefined）才调 */
+  /** Called only when `setView` was given this key (not `undefined`). */
   set(value: V): void
 }
 
-/** 核心的公开事件 */
+/** Options of `ctx.fit` / `ctx.fitPoints`. */
+export interface FitOptions {
+  /** Camera elevation in radians. */
+  elevation: number
+  /** Margin factor around the points. */
+  margin: number
+  /** Seconds; `0` jumps. Default `1.2`. */
+  duration?: number
+}
+
+/** The core's public events (event name → payload). */
 export interface StrataEvents {
+  /** The node under the pointer; `null` when it leaves, after expand/collapse, and when a mode takes over. Only the pointer causes it. */
   hover: HoverInfo | null
-  select: HoverInfo | null
-  /** 引擎的时钟（秒） */
+  /** The selection changed: a click (`source: 'pointer'`), or `select()` / restoring with `setView` (`source: 'api'`). */
+  select: SelectInfo
+  /** Every rendered frame, with the engine clock in seconds. */
   tick: number
+  /** The focused layer changed (single layer only); the new `strata.focus`. */
   focus: string | null
+  /** The hero, its weights or the follow flag changed. */
   hero: HeroInfo
+  /** Layer visibility changed. */
   layers: LayerInfo[]
-  expand: string[]
-  /** WebGL 上下文丢了：每帧的循环停下，等浏览器还回来（见 contextrestored） */
+  /** The set of expanded nodes changed; the new `strata.expanded`. */
+  expanded: string[]
+  /** The WebGL context was lost: the loop pauses until the browser restores it (see `contextrestored`). */
   contextlost: null
-  /** 上下文还回来了：GPU 上的东西按现在的状态重新上传，循环接着跑 */
+  /** The context is back: GPU resources are re-uploaded and the loop resumes. */
   contextrestored: null
+  /** The language or the text overrides changed (`setLocale`). */
+  locale: Locale
+  /** The theme changed (`setTheme`); the new full theme. */
+  theme: Theme
 }
 
 /**
- * 核心给插件的能力。只有这些：核心的私有状态不往外给。
- * 层、节点用下标的地方，都是对“现在画的那张图”（current）说的。
+ * What the core offers a plugin, and nothing more: the core's private state is not exposed.
+ * Ids wherever possible (`followTo` takes a layer id, `fit` node ids). Indexes remain only where hot
+ * paths and drawing need them: `hidden`, `indexOf`, `fitPoints`' `PlatePoint`, a mode's `hover` /
+ * `select`. They refer to the picture drawn now (`current`) and change after new data or expanding.
+ * The types of `model` and `renderer` are in `kgstrata/internals` (not covered by semver).
+ *
+ * There is no `emit`: plugins cannot fake core events. Use your own `Emitter` for your plugin's events,
+ * and the methods below (`select`, `releaseFocus`, `followTo`, …) to change core state; the core emits
+ * the matching events itself (taking over and releasing already emit `hover(null)`).
  */
 export interface StrataContext {
-  /** 全景的模型；setData 之前是 null。有模式接管时它不变 */
+  /** The normal view's model; `null` before `setData`. Unchanged while a mode has taken over. */
   readonly model: Model | null
-  /** 现在画的模型：有模式接管时是模式的，否则就是 model */
+  /** The model drawn now: the mode's while one has taken over, otherwise `model`. */
   readonly current: Model | null
-  /** 现在接管的模式是哪个插件的（名字）；没有是 null */
+  /** Name of the plugin whose mode has taken over, or `null`. */
   readonly mode: string | null
   readonly renderer: StrataRenderer
-  /** 引擎的时钟（秒） */
+  /** The engine clock in seconds. */
   readonly time: number
   readonly reducedMotion: boolean
-  /** 核心的语言（StrataOptions.locale，缺省 'en'）：插件给人看的字跟着它 */
+  /** The core's current language (`StrataOptions.locale`, default `'en'`; `setLocale` changes it and emits `locale`). */
   readonly locale: Locale
-  /** 这个实例的主题（StrataOptions.theme 盖在 DARK 上的结果）：插件自己的模型、颜色按它 */
+  /** The instance's current theme (`setTheme` changes it; `onChange` then gets `'theme'`). Build your own models and colours from it. */
   readonly theme: Theme
-  /** 引擎销毁了：异步回来的结果丢掉 */
+  /** One text in the instance's language, with its overrides (`StrataOptions.messages`). */
+  text(key: MessageKey, vars?: Record<string, string | number>): string
+  /** The instance was disposed: drop results that arrive asynchronously. */
   readonly disposed: boolean
-  /** 隐藏的层（current 的层下标） */
+  /** Hidden layers (layer indexes of `current`). */
   readonly hidden: ReadonlySet<number>
-  /** 展开的节点（id，原样：包括数据里没有子节点的） */
+  /** Expanded node ids, as given (including nodes without children). */
   readonly expanded: ReadonlySet<string>
-  /** 节点在全景里的下标；收在父节点里的算在父节点头上。没有是 -1 */
+  /** A node's index in the normal view; a folded child counts as its drawn ancestor. `-1` if absent. */
   indexOf(id: string): number
-  /** 按引擎的选项（nodeStyles）整理一份数据，查出来的问题丢掉 */
+  /** Normalizes data with the engine's options (`nodeStyles`), dropping what has issues. */
   normalize(input: StrataData): Normalized
-  /** 按引擎的规则布局：盘面的半径随节点数长，基准层按 anchor 选项 */
+  /** Lays out with the engine's rules: plate radius grows with the node count, the anchor follows the `anchor` option. */
   layoutOf(data: Resolved): StrataLayout
-  /** 接管：换上模式的底子，Looks 由它出。主角的分量按层的 id 对过去，隐藏的层照旧 */
+  /** Takes over the frame: the mode's base is drawn and its looks are used. Hero weights carry over by layer id; hidden layers stay hidden. */
   takeOver(mode: StrataMode): ModeHandle
-  /** 全景按现在的展开状态重新生成，选中清掉；没有模式接管时顺带换上新的底子、重排 */
+  /** Regenerates the normal view for the current expanded nodes and clears the selection; without a mode also redraws and re-arranges it. */
   rebuild(): void
-  /** 加一个叠加层。返回撤掉它的函数 */
+  /** Adds an overlay. Returns the function that removes it. */
   overlay(layer: StrataOverlay): () => void
-  /** 每帧在 ① 之前调 */
+  /** Called every frame before step ①. */
   onFrame(cb: (frame: FrameInfo) => void): () => void
   onChange(cb: (change: StrataChange) => void): () => void
-  /** 展开、收起节点时先问插件：返回 true 表示这次由插件处理（比如看变化时重新比一遍），核心就不重建全景 */
+  /** Asked when nodes are expanded or collapsed: return `true` to handle it yourself (the diff plugin re-compares), and the core does not rebuild the normal view. */
   onExpand(cb: () => boolean | void): () => void
   onDispose(cb: () => void): () => void
-  /** 在视图状态里登记一段（getView / setView 一并存取）。key 不能和核心的项、别的插件的重名 */
+  /** Registers a part of the view state (read by `strata.view`, applied by `setView`). The key must not clash with a core key or another plugin's. */
   registerView<V>(key: string, slot: ViewSlot<V>): void
+  /** Subscribes to a core event. */
   on<K extends keyof StrataEvents>(event: K, cb: (v: StrataEvents[K]) => void): () => void
-  emit<K extends keyof StrataEvents>(event: K, v: StrataEvents[K]): void
   /**
-   * 跟随：主角换到这一层（只在开着 followHero 时）。refit：换完以后镜头怎么办——
-   * 'overview' 重新取总览（用户动过镜头就不动），'none' 不动，给函数就在主角真的换了时调它（插件自己重新取景）
+   * Follow: makes this layer the hero (layer id, in the picture drawn now; only while `follow` is on;
+   * unknown layers are ignored). `refit`: what the camera does afterwards: `'overview'` reframes the
+   * overview (unless the user moved the camera), `'none'` stays (default), a function is called when the
+   * hero actually changed (the plugin reframes itself).
    */
-  followTo(layer: number, refit?: 'overview' | 'none' | (() => void)): void
-  /** 只有一张图时聚焦了一层：放开（不动镜头） */
+  followTo(layer: string, refit?: 'overview' | 'none' | (() => void)): void
+  /** With a single layer and a focused layer: releases the focus (does not move the camera). */
   releaseFocus(): void
-  /** 选中一个节点（id），null 清掉 */
+  /** Selects a node by id, `null` clears. Same as `strata.select`: emits `select` (`source: 'api'`), and the hero follows while `follow` is on. */
   select(id: string | null): void
-  /** 镜头框住盘面上的这些点。层还在缓动时按目标高度、目标缩放算；叠看时先把层距放回去 */
-  fit(points: PlatePoint[], opts: { elevation: number; margin: number }): void
+  /**
+   * Frames these nodes (ids, in the layout of the picture drawn now; a folded child counts as its drawn
+   * ancestor, unknown ids are skipped). Uses the layers' target heights and scales while they move;
+   * leaves the stack view first.
+   */
+  fit(nodes: readonly string[], opts: FitOptions): void
+  /** Like `fit`, with points on the plates instead of nodes. */
+  fitPoints(points: readonly PlatePoint[], opts: FitOptions): void
+  /**
+   * Hands the camera back after `fit` / `fitPoints`: returns to the overview if a plugin framed the camera
+   * and the user has not moved it since (or it is still on the overview); otherwise does nothing. Call it
+   * when what you framed goes away. Releasing a mode does this by itself. `duration` in seconds (default 1.3).
+   */
+  releaseCamera(opts?: { duration?: number }): void
 }
 
 // ─── 小工具 ──────────────────────────────────────────────────────────────────
 
-/** 类型安全的事件：E 是“事件名 → 带的东西” */
+/** A typed event emitter: `E` maps event names to payloads. Use one for your plugin's own events. */
 export class Emitter<E> {
+  // 事件名 → 回调
   private listeners = new Map<keyof E, Set<(v: never) => void>>()
 
+  /** Subscribes; returns the unsubscribe function. */
   on<K extends keyof E>(event: K, cb: (v: E[K]) => void): () => void {
     const set = this.listeners.get(event) ?? new Set()
     set.add(cb as (v: never) => void)
@@ -177,39 +227,45 @@ export class Emitter<E> {
     return () => void set.delete(cb as (v: never) => void)
   }
 
+  /** Calls every listener of `event` with `v`. */
   emit<K extends keyof E>(event: K, v: E[K]) {
     this.listeners.get(event)?.forEach((cb) => (cb as (v: E[K]) => void)(v))
   }
 
+  /** Removes all listeners. */
   clear() {
     this.listeners.clear()
   }
 }
 
-/** 核心自己的视图状态的项：插件不能占 */
-export const CORE_VIEW_KEYS: readonly (keyof StrataView)[] = ['hero', 'follow', 'hidden', 'expanded', 'selected', 'group', 'focus', 'spread', 'camera']
+/** The core's view state keys; plugins cannot register them. */
+export const CORE_VIEW_KEYS: readonly (keyof StrataView)[] = ['heroMix', 'follow', 'hidden', 'expanded', 'selected', 'group', 'focus', 'spread', 'camera']
 
-/** 插件登记的视图状态：getView 时一并读出来，setView 时按 key 分给各自的插件 */
+// 插件登记的视图状态：读 view 时一并读出来，setView 时按 key 分给各自的插件
 export class ViewRegistry {
   private slots = new Map<string, ViewSlot<unknown>>()
 
-  /** locale：登记冲突时报错用的语言 */
-  constructor(private readonly locale: Locale = DEFAULT_LOCALE) {}
+  private readonly locale: () => Locale
+
+  // locale：登记冲突时报错用的语言（给函数就每次现取：实例的语言会变）
+  constructor(locale: Locale | (() => Locale) = DEFAULT_LOCALE) {
+    this.locale = typeof locale === 'function' ? locale : () => locale
+  }
 
   register<V>(key: string, slot: ViewSlot<V>) {
-    if ((CORE_VIEW_KEYS as readonly string[]).includes(key)) throw new StrataError('view-core-key', message(this.locale, 'error.view-core-key', { key }))
-    if (this.slots.has(key)) throw new StrataError('view-key-taken', message(this.locale, 'error.view-key-taken', { key }))
+    if ((CORE_VIEW_KEYS as readonly string[]).includes(key)) throw new StrataError('view-core-key', message(this.locale(), 'error.view-core-key', { key }))
+    if (this.slots.has(key)) throw new StrataError('view-key-taken', message(this.locale(), 'error.view-key-taken', { key }))
     this.slots.set(key, slot as ViewSlot<unknown>)
   }
 
-  /** 各插件现在的那一段 */
+  // 各插件现在的那一段
   read(): Record<string, unknown> {
     const out: Record<string, unknown> = {}
     for (const [key, slot] of this.slots) out[key] = slot.get()
     return out
   }
 
-  /** 给了的项（不是 undefined）交给登记它的插件；没人登记的项不管 */
+  // 给了的项（不是 undefined）交给登记它的插件；没人登记的项不管
   apply(view: Record<string, unknown>) {
     for (const [key, slot] of this.slots) if (view[key] !== undefined) slot.set(view[key])
   }

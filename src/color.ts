@@ -18,7 +18,7 @@ export function mixHex(a: string, b: string, t: number): string {
   return '#' + new Color(a).lerp(new Color(b), t).getHexString()
 }
 
-/** 降饱和：t = 1 时完全变灰（保持亮度） */
+/** Desaturates a colour; `t = 1` is fully grey (lightness kept). */
 export function desaturate(hex: string, t: number): string {
   const c = new Color(hex)
   const l = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b

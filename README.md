@@ -21,7 +21,7 @@ Each layer is a graph with its own relations, and the layers are linked by a man
 - **React components.** `<StrataCanvas>`, hooks and panels (layer list, hero slider, path list, diff panel).
 - **Per-instance language and theme.** English and Simplified Chinese; every theme colour can be overridden.
 - **Headless entry.** Validation, layout and bridge computation without three.js, for Node or Workers.
-- **View state by id.** `getView()` / `setView()` round-trip through JSON, URLs included.
+- **View state by id.** `strata.view` / `setView()` round-trip through JSON, URLs included.
 
 ## Install
 
@@ -29,7 +29,7 @@ Each layer is a graph with its own relations, and the layers are linked by a man
 npm install kgstrata three
 ```
 
-`three` is a peer dependency (`>=0.170.0 <0.200.0`; tested with 0.187). That is enough for the core, path replay, headless and React entries; none of them loads WebAssembly. A minimal page built with Vite is about 686 kB of JavaScript including three.js (about 180 kB gzipped).
+`three` is a peer dependency (`>=0.154.0 <0.200.0`; 0.154 to 0.187 have been run). That is enough for the core, path replay, headless and React entries; none of them loads WebAssembly. A minimal page built with Vite is about 686 kB of JavaScript including three.js (about 180 kB gzipped).
 
 ## Quick start
 
@@ -71,13 +71,11 @@ import 'kgstrata/react/styles.css'
 
 export function Graph() {
   return (
-    <div style={{ position: 'relative', height: 600 }}>
-      <StrataCanvas data={data} options={{ hero: 'onto' }} style={{ position: 'absolute', inset: 0 }}>
-        <aside className="kgs-panel" style={{ position: 'absolute', left: 16, top: 16, width: 200, padding: 8 }}>
-          <LayerList />
-        </aside>
-      </StrataCanvas>
-    </div>
+    <StrataCanvas data={data} options={{ hero: 'onto' }} style={{ height: 600 }}>
+      <aside className="kgs-panel" style={{ position: 'absolute', left: 16, top: 16, width: 200, padding: 8 }}>
+        <LayerList />
+      </aside>
+    </StrataCanvas>
   )
 }
 ```
@@ -94,7 +92,7 @@ path.play(['onto:person', 'onto:company', 'tbl:company'])
 path.on('step', ({ ids, reached }) => console.log(`${reached}/${ids.length}`))
 ```
 
-**Version comparison** (`kgstrata/diff`, also `npm install @kgdiff/core @kgdiff/scene @kgdiff/layout`; adds three WebAssembly files, about 1.9 MB):
+**Version comparison** (`kgstrata/diff`, also `npm install @kgdiff/core @kgdiff/scene @kgdiff/layout @kgdiff/compute`; adds three WebAssembly files, about 1.9 MB):
 
 ```ts
 import { diffPlugin } from 'kgstrata/diff'
@@ -105,7 +103,7 @@ diff.play(true)
 diff.exit()
 ```
 
-Vite 8 needs no configuration. Vite 6 builds without configuration but its dev server needs `optimizeDeps.exclude` for the kgdiff packages; webpack, esbuild and Rollup have not been tested. Details in [getting-started.md](docs/getting-started.md#webassembly-and-kgstratadiff).
+Vite 8, webpack 5 and Next.js 16 need no configuration. Vite 6 (dev server), Rollup, esbuild and Parcel 2 need a few lines each; see [Bundlers](docs/getting-started.md#bundlers).
 
 **Headless** (`kgstrata/headless`, no three.js needed at runtime):
 
@@ -137,7 +135,7 @@ Full reference: [docs/data.md](docs/data.md).
 | [API](docs/api.md) | `Strata` members, options, view state, events, camera shots |
 | [Plugins](docs/plugins.md) | Path replay, version comparison, writing your own plugin |
 | [React](docs/react.md) | `<StrataCanvas>`, hooks, panels, CSS variables, SSR |
-| [Theming and languages](docs/theming-and-i18n.md) | `locale`, every theme field, adding a language |
+| [Theming and languages](docs/theming-and-i18n.md) | `locale`, `setLocale`, registering a language, `setTheme`, every theme field |
 | [Headless](docs/headless.md) | Validation, layout and bridges without rendering |
 | [Design](docs/design.md) | The rules behind alignment, composition and visuals |
 | [Examples](examples) | Runnable vanilla, React, diff and custom-plugin examples |
@@ -150,6 +148,7 @@ Full reference: [docs/data.md](docs/data.md).
 | `kgstrata/path` | `pathPlugin()` | `three` |
 | `kgstrata/diff` | `diffPlugin()`, kgdiff adapter | `three`, `@kgdiff/*` |
 | `kgstrata/headless` | validate, normalize, layout, proportions, bridges, types | — |
+| `kgstrata/internals` | model, styler, renderer types for take-over plugins (**not covered by semver**) | `three` |
 | `kgstrata/react` | `<StrataCanvas>`, hooks, panels | `three`, `react` |
 | `kgstrata/react/path` | `<PathList>` | `three`, `react` |
 | `kgstrata/react/diff` | `<DiffPanel>` | `three`, `react`, `@kgdiff/*` |
@@ -158,8 +157,8 @@ Full reference: [docs/data.md](docs/data.md).
 ## Browser support and status
 
 - Needs WebGL. Without it, `new Strata()` throws `StrataError` with `code: 'webgl-unavailable'` and `<StrataCanvas>` renders a fallback.
-- Tested with three.js 0.187, React 19, Vite 8 (and Vite 6 for the diff entry). Other versions inside the peer ranges are expected to work but are untested.
-- No cross-browser testing has been done yet.
+- Run with three.js 0.154 to 0.187 (0.153 fails in the shaders), React 18.3 and 19. Type declarations checked with `skipLibCheck: false` on TypeScript 5.2, 5.6 and 7.0 with `@types/three` 0.160, 0.170 and 0.187. Bundlers: see [Bundlers](docs/getting-started.md#bundlers).
+- Safari and Firefox have not been tested.
 
 Not done yet:
 

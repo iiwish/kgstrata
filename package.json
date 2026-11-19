@@ -1,6 +1,6 @@
 {
   "name": "kgstrata",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Layered 3D knowledge graphs: an ontology layer, a physical layer and the mappings between them, rendered with three.js.",
   "keywords": [
     "knowledge-graph",
@@ -46,6 +46,10 @@
       "types": "./dist/headless.d.ts",
       "default": "./dist/headless.js"
     },
+    "./internals": {
+      "types": "./dist/internals.d.ts",
+      "default": "./dist/internals.js"
+    },
     "./react": {
       "types": "./dist/react/index.d.ts",
       "default": "./dist/react/index.js"
@@ -88,21 +92,26 @@
     "test": "vitest run",
     "check:pack": "node scripts/check-pack.mjs",
     "build:examples": "pnpm --filter \"./examples/*\" -r run typecheck && pnpm --filter \"./examples/*\" -r run build",
-    "prepublishOnly": "pnpm build && pnpm check:pack"
+    "prepublishOnly": "pnpm build && pnpm check:pack",
+    "check:types-compat": "node scripts/compat-types.mjs"
   },
   "dependencies": {
     "d3-force": "3.0.1"
   },
   "peerDependencies": {
-    "@kgdiff/core": "^0.12.1",
-    "@kgdiff/layout": "^0.12.1",
-    "@kgdiff/scene": "^0.12.1",
-    "@types/three": ">=0.170.0 <0.200.0",
+    "@kgdiff/compute": "^0.12.3",
+    "@kgdiff/core": "^0.12.3",
+    "@kgdiff/layout": "^0.12.3",
+    "@kgdiff/scene": "^0.12.3",
+    "@types/three": ">=0.154.0 <0.200.0",
     "react": "^18.0.0 || ^19.0.0",
     "react-dom": "^18.0.0 || ^19.0.0",
-    "three": ">=0.170.0 <0.200.0"
+    "three": ">=0.154.0 <0.200.0"
   },
   "peerDependenciesMeta": {
+    "@kgdiff/compute": {
+      "optional": true
+    },
     "@kgdiff/core": {
       "optional": true
     },
@@ -123,9 +132,10 @@
     }
   },
   "devDependencies": {
-    "@kgdiff/core": "0.12.1",
-    "@kgdiff/layout": "0.12.1",
-    "@kgdiff/scene": "0.12.1",
+    "@kgdiff/compute": "0.12.3",
+    "@kgdiff/core": "0.12.3",
+    "@kgdiff/layout": "0.12.3",
+    "@kgdiff/scene": "0.12.3",
     "@types/d3-force": "3.0.10",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

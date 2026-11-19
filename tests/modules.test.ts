@@ -20,7 +20,7 @@ function specifiersOf(code: string): string[] {
   const src = stripComments(code)
   for (const m of src.matchAll(/(?:^|[\s;])(?:import|export)\s[^'";]*?\sfrom\s*['"]([^'"]+)['"]/g)) out.push(m[1])
   for (const m of src.matchAll(/(?:^|[\s;])import\s*['"]([^'"]+)['"]/g)) out.push(m[1])
-  // 模块增强：declare module '../engine.js' 也是一条引入（类型声明里原样保留）
+  // 模块增强：declare module '../engine/types.js' 也是一条引入（类型声明里原样保留）
   for (const m of src.matchAll(/(?:^|[\s;])declare\s+module\s+['"](\.[^'"]*)['"]/g)) out.push(m[1])
   return out
 }
@@ -62,6 +62,8 @@ function closure(entry: string) {
   return { files: [...files], packages: [...packages] }
 }
 
+const isReact = (p: string) => p === 'react' || p === 'react-dom' || p.startsWith('react/') || p.startsWith('react-dom/')
+
 describe('引入闭包', () => {
   it('抓得到各种写法', () => {
     const code = `
@@ -82,7 +84,7 @@ describe('引入闭包', () => {
 
   it('核心入口：没有 kgdiff，也没有路径回放和看变化的代码', () => {
     const { files, packages } = closure('index.ts')
-    expect(files).toContain(`${ROOT}engine.ts`)
+    expect(files).toContain(`${ROOT}engine/index.ts`)
     expect(packages.filter((p) => p.startsWith('@kgdiff/'))).toEqual([])
     expect(files.filter((f) => f.startsWith(`${ROOT}path/`) || f.startsWith(`${ROOT}diff/`))).toEqual([])
   })
@@ -100,6 +102,32 @@ describe('引入闭包', () => {
     expect(files.filter((f) => f.startsWith(`${ROOT}diff/`))).toEqual([])
   })
 
+  it('底层入口（internals）：没有 kgdiff，没有 react，不带渲染器的实现，也没有路径回放和看变化的代码', () => {
+    const { files, packages } = closure('internals.ts')
+    expect(files).toContain(`${ROOT}model.ts`)
+    expect(files).toContain(`${ROOT}styler.ts`)
+    expect(packages.filter((p) => p.startsWith('@kgdiff/'))).toEqual([])
+    expect(packages.filter(isReact)).toEqual([])
+    expect(files.filter((f) => f.startsWith(`${ROOT}path/`) || f.startsWith(`${ROOT}diff/`) || f.startsWith(`${ROOT}react/`))).toEqual([])
+    // 渲染器只按类型引（export type）：实例由 ctx.renderer 给，入口不带渲染器的实现
+    const runtime = specifiersOf(SOURCES[`${ROOT}internals.ts`].replace(/^export type .*$/gm, ''))
+    expect(runtime.filter((s) => s.includes('renderer'))).toEqual([])
+  })
+
+  it('核心入口不转出底层入口的东西，也不引 internals', () => {
+    const src = stripComments(SOURCES[`${ROOT}index.ts`])
+    expect(specifiersOf(src).filter((s) => s.includes('internals') || s.includes('model') || s.includes('renderer') || s.includes('pipeline'))).toEqual([])
+    for (const name of ['buildModel', 'nodeColor', 'magnitudeOf', 'Styler', 'StyleState', 'StrataRenderer', 'RendererBase', 'RendererOptions', 'composeFrame', 'fadePresence', 'Model']) {
+      expect(new RegExp(`\\b${name}\\b`).test(src), name).toBe(false)
+    }
+    // headless 也不碰它们
+    expect(closure('headless.ts').files.filter((f) => f === `${ROOT}model.ts` || f === `${ROOT}styler.ts` || f === `${ROOT}internals.ts`)).toEqual([])
+  })
+
+  it('核心的 Strata 不公开渲染器', () => {
+    expect(/private readonly renderer: StrataRenderer/.test(SOURCES[`${ROOT}engine/index.ts`])).toBe(true)
+  })
+
   it('看变化的入口带着 kgdiff', () => {
     expect(closure('diff/index.ts').packages.some((p) => p.startsWith('@kgdiff/'))).toBe(true)
   })
@@ -110,10 +138,9 @@ describe('引入闭包', () => {
       .filter((f) => specifiersOf(SOURCES[f]).some((s) => s.startsWith('@kgdiff/')))
     expect(offenders).toEqual([])
   })
-  const isReact = (p: string) => p === 'react' || p === 'react-dom' || p.startsWith('react/') || p.startsWith('react-dom/')
 
-  it('核心的四个入口不带 react，也不碰 react/ 目录', () => {
-    for (const entry of ['index.ts', 'headless.ts', 'path/index.ts', 'diff/index.ts']) {
+  it('核心的五个入口不带 react，也不碰 react/ 目录', () => {
+    for (const entry of ['index.ts', 'headless.ts', 'internals.ts', 'path/index.ts', 'diff/index.ts']) {
       const { files, packages } = closure(entry)
       expect(packages.filter(isReact), entry).toEqual([])
       expect(files.filter((f) => f.startsWith(`${ROOT}react/`)), entry).toEqual([])
@@ -122,7 +149,7 @@ describe('引入闭包', () => {
 
   it('React 入口：只依赖 react 和核心，没有 kgdiff，也没有路径回放和看变化的代码', () => {
     const { files, packages } = closure('react/index.ts')
-    expect(files).toContain(`${ROOT}engine.ts`)
+    expect(files).toContain(`${ROOT}engine/index.ts`)
     expect(packages.filter((p) => p.startsWith('@kgdiff/'))).toEqual([])
     expect(files.filter((f) => f.startsWith(`${ROOT}path/`) || f.startsWith(`${ROOT}diff/`))).toEqual([])
     expect(files.filter((f) => f === `${ROOT}react/path.tsx` || f === `${ROOT}react/diff.tsx`)).toEqual([])

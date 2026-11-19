@@ -11,7 +11,7 @@ npm install kgstrata three
 # 或者：pnpm add kgstrata three
 ```
 
-`three` 是 peer 依赖，范围是 `>=0.170.0 <0.200.0`，只实测过 `0.187`。`d3-force` 是普通依赖，会自动装上。
+`three` 是 peer 依赖，范围是 `>=0.154.0 <0.200.0`：0.154 到 0.187 实际跑过（0.153 着色器报错）。`d3-force` 是普通依赖，会自动装上。
 
 核心、`kgstrata/path`、`kgstrata/headless`、`kgstrata/react` 只要这两个包，里面都不加载 WebAssembly。一个最小页面（[原生示例](../examples/vanilla)）连 three.js 打包约 686 kB，gzip 后约 180 kB。
 
@@ -19,9 +19,11 @@ npm install kgstrata three
 
 | 想用 | 另装 |
 |---|---|
-| React 组件（`kgstrata/react`、`kgstrata/react/path`） | `react`、`react-dom`（18 或 19；只实测过 19） |
-| 两版对比（`kgstrata/diff`、`kgstrata/react/diff`） | `@kgdiff/core`、`@kgdiff/scene`、`@kgdiff/layout`（`^0.12.1`） |
+| React 组件（`kgstrata/react`、`kgstrata/react/path`） | `react`、`react-dom`（18 或 19；实测过 18.3 和 19） |
+| 两版对比（`kgstrata/diff`、`kgstrata/react/diff`） | `@kgdiff/core`、`@kgdiff/scene`、`@kgdiff/layout`、`@kgdiff/compute`（`^0.12.3`） |
 | three 的 TypeScript 类型 | `@types/three`（范围和 `three` 一样） |
+
+类型声明在 `skipLibCheck: false` 下查过：TypeScript 5.2、5.6、7.0 × `@types/three` 0.160、0.170、0.187，`moduleResolution` 分 `bundler` 和 `nodenext`（仓库里的 `pnpm check:types-compat`）。比 5.2 更老的 TypeScript 没试过。
 
 ## 最小页面
 
@@ -66,14 +68,15 @@ const issues = strata.setData(data) // 数据没问题时是 []
 
 - 拖动旋转，滚轮缩放；
 - 悬停一个节点，点亮它的邻居和同一个对应块里的节点；
-- 单击选中，点空白处取消；
+- 单击选中，点空白处取消（`select` 事件带 `source: 'pointer'`；`strata.select(id)` 走同一条路，带 `source: 'api'`）；
 - 双击有子节点的节点（带字段的表）展开或收起。
 
 ## 容器尺寸
 
 - 画布取宿主元素的尺寸（`clientWidth` × `clientHeight`）。宿主没有高度，画布就只有 1 像素高。用固定高度、`inset: 0`、flex 或 grid 都行。
 - 引擎每一帧都看一次宿主的尺寸，尺寸变了不用调任何方法。镜头还停在总览（用户没动过）时，宽高比一变就重新取景。
-- 右侧有面板挡着时，`strata.setInset(px)` 让画面在没被挡住的那块里居中。
+- React 的 `<StrataCanvas>` 是一个有定位的容器，缺省 `width: 100%; height: 100%; min-height: 320px`，父元素没有高度时也有高度；面板放在它里面，`position: absolute` 就行。
+- 有面板挡着画面时，`strata.setInset({ right: 320 })`（`top`、`right`、`bottom`、`left` 随便给几边，CSS 像素）让画面在没被挡住的那块里居中。
 - 设备像素比最多按 2 算。
 
 ## 销毁
@@ -92,6 +95,93 @@ import.meta.hot?.dispose(() => strata.dispose())
 ```
 
 `kgstrata/react` 的 `<StrataCanvas>` 卸载时会自己销毁。
+
+## 打包工具
+
+核心的几个入口（`kgstrata`、`/path`、`/headless`、`/react`……）是普通的 ESM，下面这些打包工具都不用配置。看变化的入口带着 kgdiff，它用 `new URL('…', import.meta.url)` 找自己的三个 `.wasm` 文件，各打包工具的差别就在这里。表里是用打好的 kgstrata 0.2.0 包和 kgdiff 0.12.3 实测的结果，每种构建都在浏览器里跑过（Vite 6、8 也跑了开发服务器，Next.js 也跑了服务端渲染）：
+
+| 打包工具 | 核心 | `kgstrata/diff` |
+|---|---|---|
+| Vite 8 | 不用配置 | 不用配置 |
+| Vite 6 | 不用配置 | 构建不用配置；开发服务器要 `optimizeDeps.exclude`（见下） |
+| webpack 5 | 不用配置 | 不用配置（有一条无害的警告，见下） |
+| Next.js 16（Turbopack 和 `--webpack`） | 不用配置；服务端渲染不崩 | 不用配置 |
+| Rollup | 不用配置 | 加 `importMetaAssets()`（见下） |
+| esbuild | 不用配置 | `--loader:.wasm=file` 加 `wasm` 选项（见下） |
+| Parcel 2 | 要开 `packageExports`（见下） | 要开 `packageExports` |
+
+Safari 和 Firefox 没有测过。
+
+**Vite 6**，开发服务器里用 `kgstrata/diff`：
+
+```ts
+// vite.config.ts
+import { defineConfig } from 'vite'
+
+export default defineConfig({
+  optimizeDeps: { exclude: ['@kgdiff/core', '@kgdiff/layout', '@kgdiff/scene', '@kgdiff/compute'] },
+})
+```
+
+**webpack 5** 用 `kgstrata/diff` 时会打一条 `Critical dependency: the request of a dependency is an expression`，来自 `@kgdiff/compute/dist/loader.js`（只在 Node 里走到的一处 `import()`，浏览器走不到）。无害；要消掉它：
+
+```js
+// webpack.config.js
+export default {
+  // …
+  ignoreWarnings: [{ module: /@kgdiff[\\/]compute/, message: /Critical dependency/ }],
+}
+```
+
+**Rollup** 不复制 `new URL(…, import.meta.url)` 引用的文件。加上 [`@web/rollup-plugin-import-meta-assets`](https://www.npmjs.com/package/@web/rollup-plugin-import-meta-assets)：
+
+```js
+// rollup.config.js
+import { importMetaAssets } from '@web/rollup-plugin-import-meta-assets'
+
+export default {
+  // …
+  plugins: [/* node-resolve 等 */ importMetaAssets()],
+}
+```
+
+**esbuild** 也不处理 `new URL(…, import.meta.url)`：缺省时页面去要 `/wasm/compute.wasm`，得到 404。用 `file` 加载器加载 `.wasm`，把地址交给看变化插件：
+
+```ts
+// main.ts
+import { Strata } from 'kgstrata'
+import { diffPlugin } from 'kgstrata/diff'
+import compute from '@kgdiff/compute/compute.wasm'
+import layout from '@kgdiff/compute/layout.wasm'
+import formats from '@kgdiff/compute/formats.wasm'
+
+const strata = new Strata(document.getElementById('app')!)
+const diff = strata.use(diffPlugin({ wasm: { compute, layout, formats } }))
+strata.setData(after)
+await diff.show(before, after)
+```
+
+```ts
+// wasm.d.ts，给 TypeScript 用
+declare module '*.wasm' {
+  const url: string
+  export default url
+}
+```
+
+```sh
+esbuild main.ts --bundle --format=esm --outdir=dist --loader:.wasm=file
+```
+
+esbuild 把三个文件复制到 `dist/`（`compute-<hash>.wasm`……），引入得到的是它们相对页面的路径，所以 `index.html` 要放在 `dist/` 下面；加 `--public-path` 就是绝对地址。要装 `@kgdiff/compute`（见 [plugins.zh-CN.md](plugins.zh-CN.md#两版对比kgstratadiff)）。
+
+**Parcel 2** 缺省不读 `exports`，任何子入口（`kgstrata/react`、`kgstrata/diff`……）都解析不了。在你的 `package.json` 里打开：
+
+```json
+{
+  "@parcel/resolver-default": { "packageExports": true }
+}
+```
 
 ## 常见问题
 
@@ -124,24 +214,7 @@ try {
 
 ### WebAssembly 和 `kgstrata/diff`
 
-只有 `kgstrata/diff` 和 `kgstrata/react/diff` 会带上 kgdiff，它要加载三个 `.wasm` 文件（未压缩共约 1.9 MB）。这些文件用 `new URL(..., import.meta.url)` 定位，打包工具不能挪动它们：
-
-| 打包工具 | 情况 |
-|---|---|
-| Vite 8 | 开发和构建都不用配置。 |
-| Vite 6 | 构建不用配置；开发服务器要把这几个包从依赖预构建里排除（见下）。 |
-| webpack、esbuild、Rollup | 没测过。 |
-
-```ts
-// vite.config.ts（Vite 6 的开发服务器）
-import { defineConfig } from 'vite'
-
-export default defineConfig({
-  optimizeDeps: { exclude: ['@kgdiff/core', '@kgdiff/layout', '@kgdiff/scene', '@kgdiff/compute'] },
-})
-```
-
-不引入 `kgstrata/diff` 就不用管这些：别的入口里没有 WebAssembly，连 kgdiff 的类型都不引入。
+只有 `kgstrata/diff` 和 `kgstrata/react/diff` 会带上 kgdiff，它要加载三个 `.wasm` 文件（未压缩共约 1.9 MB）。各个打包工具怎么处理见[打包工具](#打包工具)。不引入 `kgstrata/diff` 就不用管这些：别的入口里没有 WebAssembly，连 kgdiff 的类型都不引入。
 
 ### 包太大的警告
 

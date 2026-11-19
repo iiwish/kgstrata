@@ -21,7 +21,8 @@ export interface RendererBase {
   nodes: BaseNode[]
   edges: BaseEdge[]
   layers: number
-  primary: number
+  /** 基准层的下标 */
+  anchor: number
   plates: PlatesInput
 }
 
@@ -46,12 +47,33 @@ export interface RendererOptions {
   locale?: Locale
 }
 
+/**
+ * 四边有面板挡着时镜头怎么设：虚拟画布往一边多出两边之差，只画其中 w × h 的一块，镜头轴线就落在没被挡住那块的正中。
+ * 取景只算没被挡住的那块：fitAspect 是它的宽高比，fitHeight 是它占虚拟画布高度的比例（竖直视角按它收窄）。
+ * 一个方向上挡掉六成以上就不管那个方向：剩下的太窄，居中也没意义
+ */
+export function insetView(w: number, h: number, inset: { top: number; right: number; bottom: number; left: number }) {
+  const [l, r] = inset.left + inset.right < w * 0.6 ? [inset.left, inset.right] : [0, 0]
+  const [t, b] = inset.top + inset.bottom < h * 0.6 ? [inset.top, inset.bottom] : [0, 0]
+  if (!l && !r && !t && !b) return { offset: null, fitAspect: w / h, fitHeight: 1 }
+  const dx = r - l
+  const dy = b - t
+  const fullW = w + Math.abs(dx)
+  const fullH = h + Math.abs(dy)
+  return {
+    offset: { fullW, fullH, x: dx > 0 ? dx : 0, y: dy > 0 ? dy : 0 },
+    fitAspect: (w - l - r) / (h - t - b),
+    fitHeight: (h - t - b) / fullH,
+  }
+}
+
 export class StrataRenderer {
   readonly gl: WebGLRenderer
-  readonly scene = new Scene()
+  // 显式标注不带泛型的 Scene：推断出来的 Scene<Object3DEventMap> 写进 .d.ts，@types/three < 0.184 下会报 “Scene is not generic”
+  readonly scene: Scene = new Scene()
   private overlay = new Scene()
   readonly rig: CameraRig
-  readonly theme: Theme
+  private _theme: Theme
   /** 这个渲染器自己的雾：所有材质挂的是这一份的 uniform，和同一页上别的实例互不相干 */
   readonly fog: Fog
   private composer: EffectComposer
@@ -66,7 +88,7 @@ export class StrataRenderer {
   private labels: Labels
   private base: RendererBase | null = null
   /** 节点世界坐标，每帧更新 */
-  world = new Float32Array(0)
+  world: Float32Array = new Float32Array(0)
   private ends = new Float32Array(0)
   private items: LabelItem[] = []
   private itemLooks: LabelLook[] = []
@@ -82,8 +104,8 @@ export class StrataRenderer {
   width = 1
   height = 1
   private pixel = 1
-  /** 右侧被面板挡住的宽度（CSS 像素）：投影中心往左挪一半，画面在剩下的地方居中 */
-  private inset = 0
+  /** 四边被面板挡住的宽度（CSS 像素）：投影中心挪到没被挡住那块的正中 */
+  private inset = { top: 0, right: 0, bottom: 0, left: 0 }
 
   constructor(
     private readonly host: HTMLElement,
@@ -91,8 +113,8 @@ export class StrataRenderer {
   ) {
     // 先拿上下文：拿不到就在这里抛，后面什么都还没建、没挂到页面上
     this.gl = createGL(opts.locale)
-    const theme = (this.theme = opts.theme ?? DARK)
-    this.fog = createFog(theme.fogNear, theme.fogFar)
+    const theme = (this._theme = opts.theme ?? DARK)
+    this.fog = createFog(theme.fog.near, theme.fog.far)
     this.plates = new Plates(theme, this.fog)
     this.nodes = new Nodes(this.fog)
     this.marks = new Marks(this.fog, 8192)
@@ -122,6 +144,32 @@ export class StrataRenderer {
     this.composer.addPass(this.bloom)
     this.composer.addPass(output)
     this.passes = [renderPass, this.bloom, output]
+  }
+
+  /** 这个渲染器现在用的主题 */
+  get theme(): Theme {
+    return this._theme
+  }
+
+  /**
+   * 换主题：清屏色、背景贴图、盘面（点阵、底色、层名、领域名）、标签图集按新主题重建。
+   * 节点和线的颜色不在这里：它们每帧从 Looks 来（由模型和样式按主题算）。不重新布局。
+   */
+  setTheme(theme: Theme) {
+    if (this.disposed) return
+    this._theme = theme
+    this.gl.setClearColor(new Color(theme.background), 1)
+    this.backdrop.dispose()
+    this.backdrop = makeBackdrop(theme)
+    this.scene.background = this.backdrop
+    this.plates.setTheme(theme)
+    if (this.base) this.plates.build(this.base.plates, this.pixel)
+    this.overlay.remove(this.labels.mesh)
+    const cap = this.labels.capacityOf
+    this.labels.dispose()
+    this.labels = new Labels(theme, cap)
+    this.labels.setResolution(this.width, this.height)
+    this.overlay.add(this.labels.mesh)
   }
 
   setBase(base: RendererBase) {
@@ -199,9 +247,10 @@ export class StrataRenderer {
     return this.heightGoal[layer] ?? this.heights[layer] ?? 0
   }
 
-  setInset(px: number) {
-    if (px === this.inset) return
-    this.inset = px
+  setInset(inset: { top: number; right: number; bottom: number; left: number }) {
+    const o = this.inset
+    if (o.top === inset.top && o.right === inset.right && o.bottom === inset.bottom && o.left === inset.left) return
+    this.inset = { ...inset }
     this.width = 0
     this.resize()
   }
@@ -234,15 +283,13 @@ export class StrataRenderer {
     this.bloom.resolution.set(w, h)
     this.rig.resize(w, h)
     const cam = this.rig.camera
-    if (this.inset > 0 && this.inset < w * 0.6) {
-      // 虚拟画布在左边多出 inset 宽，只画右边 w 宽：镜头轴线落在没被挡住那块的正中
-      cam.aspect = (w + this.inset) / h
-      cam.setViewOffset(w + this.inset, h, this.inset, 0, w, h)
-      this.rig.fitAspect = (w - this.inset) / h
-    } else {
-      cam.clearViewOffset()
-      this.rig.fitAspect = w / h
-    }
+    const v = insetView(w, h, this.inset)
+    if (v.offset) {
+      cam.aspect = v.offset.fullW / v.offset.fullH
+      cam.setViewOffset(v.offset.fullW, v.offset.fullH, v.offset.x, v.offset.y, w, h)
+    } else cam.clearViewOffset()
+    this.rig.fitAspect = v.fitAspect
+    this.rig.fitHeight = v.fitHeight
     cam.updateProjectionMatrix()
     this.edges.setResolution(w, h)
     this.labels.setResolution(w, h)
@@ -292,7 +339,7 @@ export class StrataRenderer {
     // 标签避让要用这一帧的相机矩阵（OrbitControls 只改了朝向，矩阵要到渲染时才更新）
     this.rig.camera.updateMatrixWorld()
     const focusDist = this.rig.camera.position.distanceTo(this.rig.controls.target)
-    placeFog(this.fog, focusDist)
+    placeFog(this.fog, focusDist, this._theme.fog)
     this.plates.update(looks, this.rig.camera)
     this.nodes.update(base.nodes, looks.nodes, W, this.height, S)
     this.edges.update(drawn, this.ends, time)

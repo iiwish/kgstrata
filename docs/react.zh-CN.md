@@ -8,7 +8,7 @@
 npm install kgstrata three react react-dom
 ```
 
-peer 依赖接受 React 18 和 19，只实测过 19。
+peer 依赖接受 React 18 和 19，实测过 18.3 和 19。
 
 | 入口 | 里面有什么 | 带不带 kgdiff |
 |---|---|---|
@@ -27,19 +27,19 @@ import 'kgstrata/react/styles.css'
 
 export function Graph({ data }: { data: StrataData }) {
   return (
-    <div style={{ position: 'relative', height: 600 }}>
-      <StrataCanvas data={data} options={{ hero: 'onto', locale: 'zh-CN' }} style={{ position: 'absolute', inset: 0 }}>
-        <aside className="kgs-panel" style={{ position: 'absolute', left: 16, top: 16, width: 200, padding: 8 }}>
-          <LayerList />
-        </aside>
-        <NodeTip />
-      </StrataCanvas>
-    </div>
+    <StrataCanvas data={data} options={{ hero: 'onto', locale: 'zh-CN' }} style={{ height: 600 }}>
+      <aside className="kgs-panel" style={{ position: 'absolute', left: 16, top: 16, width: 200, padding: 8 }}>
+        <LayerList />
+      </aside>
+      <NodeTip />
+    </StrataCanvas>
   )
 }
 ```
 
-结构：组件先渲染一个 `<div class="kgs-canvas">`（画布的宿主，`className` / `style` 作用在它上面），然后把 `children` 渲染成它的**兄弟节点**，不是放在它里面。所以要给画布那个 div 尺寸；children 用绝对定位时（面板、`NodeTip`），把两者一起放进一个有定位的外层容器。
+结构：组件渲染一个容器 `<div class="kgs-canvas">`，它就是定位容器。里面先是画布的宿主 `<div class="kgs-canvas-host">`（绝对定位铺满容器），再是 `children`，盖在画布上。面板、`NodeTip` 直接 `position: absolute` 就对了。
+
+容器自带缺省规则 `position: relative; width: 100%; height: 100%; min-height: 320px`，写成 `:where(.kgs-canvas){…}`，放在组件自己渲染的一个 `<style>` 里（`CANVAS_CSS`）。不引 `styles.css` 也成立；特异度是 0，你写的任何东西（`className`、`style`、自己的样式表）都盖得过它：固定高度写 `style={{ height: 600 }}`，不要最小高度写 `minHeight: 0`。开发模式下宿主的高度是 0 时，组件在控制台提醒一次（按实例的语言）。
 
 ### Props
 
@@ -52,16 +52,19 @@ export function Graph({ data }: { data: StrataData }) {
 | `onIssues` | `(issues: DataIssue[]) => void` | 每次 `setData` 之后调，没有问题也调（给空数组）。 |
 | `onError` | `(error: unknown) => void` | 创建失败（没有 WebGL 时是 `StrataError`，`code: 'webgl-unavailable'`）。 |
 | `fallback` | `ReactNode \| ((error) => ReactNode)` | 创建失败时代替画布渲染的东西。缺省是一行按语言的说明，类名 `.kgs-fallback`。 |
-| `className`、`style` | | 作用在画布的宿主 div 上。 |
-| `children` | `ReactNode` | 渲染在画布后面、provider 里面，所以能用 `useStrata()` / `usePlugin()`。 |
+| `className`、`style` | | 作用在容器（`.kgs-canvas`）上。 |
+| `children` | `ReactNode` | 渲染在容器里、画布宿主的后面（盖在画布上），在 provider 里面，所以能用 `useStrata()` / `usePlugin()`。 |
 | `create` | `(host, options) => Strata` | 自定义怎么造引擎，缺省 `new Strata(host, options)`。测试里有用。 |
 | `ref` | `Ref<Strata \| null>` | 实例（创建好之前是 `null`）。 |
-| `onHover`、`onSelect` | `(info: HoverInfo \| null) => void` | 核心事件 `hover`、`select`。 |
+| `onHover` | `(info: HoverInfo \| null) => void` | 核心事件 `hover`。 |
+| `onSelect` | `(info: SelectInfo) => void` | 核心事件 `select`（`{ node, source, pointer }`；`select()`、`setView` 也发，`source: 'api'`）。 |
 | `onFocus` | `(layer: string \| null) => void` | `focus` |
 | `onHero` | `(hero: HeroInfo) => void` | `hero` |
 | `onLayers` | `(layers: LayerInfo[]) => void` | `layers` |
-| `onExpand` | `(ids: string[]) => void` | `expand` |
+| `onExpanded` | `(ids: string[]) => void` | `expanded` |
 | `onContextLost`、`onContextRestored` | `() => void` | `contextlost`、`contextrestored` |
+| `onLocale` | `(locale: Locale) => void` | `locale` |
+| `onTheme` | `(theme: Theme) => void` | `theme` |
 
 事件回调和 `onIssues` 每次都现取，换了新函数不会重新订阅。`tick` 没有对应的 prop，用 `useStrataEvent(strata, 'tick', cb)`。
 
@@ -94,16 +97,19 @@ const PLUGINS = [pathPlugin()] as const
 | `useStrataEvent(strata, event, cb)` | `void` | 订阅一个核心事件。`cb` 每次渲染可以是新函数。`strata` 是 `null` 时什么也不做。 |
 | `useStrataState(strata, key)` | 见下 | 把引擎的一项状态变成 React 状态（`useSyncExternalStore`）。内容真的变了才重画。 |
 | `useStrataOr(strata)` | `Strata \| null` | 给了就用给的，`strata` 是 `undefined` 时用上下文里的。写面板用。 |
-| `useLocale(strata, locale?)` | `Locale` | 给了 `locale` 用它，否则用实例的，再否则 `'en'`。 |
+| `useLocale(strata, locale?)` | `Locale` | 给了 `locale` 用它，否则用实例的（`setLocale` 以后重画），再否则 `'en'`。 |
+| `useText(strata, locale?)` | `(key, vars?) => string` | 面板的取字函数：实例的语言，带上它的 `messages` 覆盖；给了别的 `locale` 就按那种语言、不带覆盖。`setLocale` 以后重画。 |
 
 `useStrataState` 的 key：
 
 | Key | 类型 | 来源 | 没有实例时 |
 |---|---|---|---|
 | `'layers'` | `LayerInfo[]` | `strata.layers`、`layers` 事件 | `[]` |
-| `'hero'` | `HeroInfo \| null` | `strata.heroInfo`、`hero` 事件 | `null` |
-| `'expanded'` | `string[]` | `strata.expanded`、`expand` 事件 | `[]` |
-| `'focus'` | `string \| null` | `focus` 事件 | `null` |
+| `'hero'` | `HeroInfo \| null` | `strata.hero`、`hero` 事件 | `null` |
+| `'expanded'` | `string[]` | `strata.expanded`、`expanded` 事件 | `[]` |
+| `'focus'` | `string \| null` | `strata.focus`、`focus` 事件（只在一层时；几层并存时是 `null`） | `null` |
+| `'locale'` | `{ locale, messages }` | `strata.locale`、`strata.messages`，`locale` 事件 | `{ locale: 'en', messages: {} }` |
+| `'theme'` | `Theme \| null` | `strata.theme`，`theme` 事件 | `null` |
 
 自己 `new Strata`、不用 `<StrataCanvas>` 时，用 `<StrataProvider strata plugins?>` 把实例交给 hooks 和面板。
 
@@ -123,7 +129,7 @@ const PLUGINS = [pathPlugin()] as const
 
 | Prop | 类型 | 含义 |
 |---|---|---|
-| `counts` | `Record<string, number> \| Map<string, number>` | 每行右边的数（比如节点数），按层的 id。 |
+| `counts` | `Record<string, number> \| Map<string, number> \| false` | 每行右边的数，按层的 id。缺省是这一层的顶层节点数（`LayerInfo.count`，表里收着的字段不算）；`false` 不出数。 |
 | `badges` | 同上 | 每层的徽标（比如有几处变化）。 |
 | `badgeWhen` | `'hidden' \| 'always'` | 缺省 `'hidden'`：只在层隐藏着时显示，变化不能悄悄藏掉。 |
 | `badgeTitle` | `(n, layer) => string` | 徽标的提示，缺省“这一层有 n 处变化”。 |
@@ -131,7 +137,7 @@ const PLUGINS = [pathPlugin()] as const
 
 ### `<FollowToggle>`
 
-`setFollowHero` 的开关。只有一层时不渲染。Prop：`hero?`（直接给状态）。
+`setFollow` 的开关。只有一层时不渲染。Prop：`hero?`（直接给状态）。
 
 ### `<HeroMixSlider>`
 
@@ -139,15 +145,15 @@ const PLUGINS = [pathPlugin()] as const
 
 ### `<SpreadSlider>`
 
-`setSpread` 的滑杆。Props：`min`（0.4）、`max`（1.8）、`step`（0.01）。初值从 `getView().spread` 读。
+`setSpread` 的滑杆。Props：`min`（0.4）、`max`（1.8）、`step`（0.01）。初值从 `strata.spread` 读。
 
 ### `<ViewButtons>`
 
-两个按钮：**总览**（`focusLayer(null)`：放开聚焦、主角回家、取总览）和**叠看**（`shot('top')`）。
+两个按钮：**总览**（`focusLayer(null)`：一层时放开聚焦，几层时主角回家；取总览）和**叠看**（`shot('top')`）。
 
 ### `<NodeTip>`
 
-跟着 `hover` 事件的提示：名字、层 · 组，以及“N 个字段 · 双击展开” / “双击收起”。按指针位置绝对定位，所以要和画布放在同一个有定位的容器里。
+跟着 `hover` 事件的提示：名字、层名 · 组名，以及“N 个字段 · 双击展开” / “双击收起”。名词按节点类型的 `NodeStyle.childNoun`（内置的 `table` 样式是“字段”）；没配时是“内含 N 项 · 双击展开”。按指针位置（`info.pointer`）绝对定位：放在 `<StrataCanvas>` 的 children 里就对了。自己做提示时，`tipLines(info, t)` 给出同样的几行。
 
 | Prop | 类型 | 含义 |
 |---|---|---|
@@ -176,7 +182,7 @@ const paths: PathItem[] = [
 | `path` | `PathApi \| null` | 插件的接口，缺省用 `<StrataCanvas plugins>` 里装的 `'path'`。 |
 | `nodeInfo` | `(id) => { label, layer }` | 每一步显示的名字和层，缺省从 `strata.data` 里查（`nodeInfoFrom`）。 |
 | `active` / `onActiveChange` | `string \| null` / `(id) => void` | 受控的选中。 |
-| `live` | `PathProgress` | 直接给进度（服务端渲染、测试）。 |
+| `progress` | `PathProgress` | 直接给进度（服务端渲染、测试）。 |
 
 ### `<DiffPanel>`（`kgstrata/react/diff`）
 
@@ -196,17 +202,20 @@ const PLUGINS = [diffPlugin()] as const
 | Prop | 类型 | 含义 |
 |---|---|---|
 | `diff` | `DiffApi \| null` | 插件的接口，缺省用上下文里的 `'diff'`。 |
-| `colors` | `Partial<Record<ChangeFamily, { base, text }>>` | 覆盖每类变化的颜色，缺省 `familyColors()`。 |
+| `colors` | `Partial<Record<ChangeFamily, { base, text }>>` | 覆盖每类变化的颜色，缺省 `familyColors(strata.theme)`，跟着 `theme.diffScheme`。 |
 | `pollEvery` | `number` | 进度条多久（秒）跟一次回放，缺省 0.1。 |
 | `current` | `StrataDiff \| null` | 直接给对比结果（服务端渲染、测试）。 |
 
-`changesByLayer(diff, strata.layers)` 按层的 id 数变化；交给 `<LayerList badges>`，隐藏的层就会显示它藏着几处变化。
+`changesByLayer(diff)` 按层的 id 数变化（每处变化算在 `DiffHunk.layer`，它的节点大多所在的那层）；交给 `<LayerList badges>`，隐藏的层就会显示它藏着几处变化。
 
 ## 样式
 
-`import 'kgstrata/react/styles.css'` 是可选的，不引入时面板就是没有样式的结构。样式表不管位置。`.kgs-panel` 是一块毛玻璃底子，可以套在面板外面。`.kgs-canvas` 没有样式，尺寸自己定。
+`import 'kgstrata/react/styles.css'` 是可选的，不引入时面板就是没有样式的结构。样式表不管位置。`.kgs-panel` 是一块毛玻璃底子，可以套在面板外面。`.kgs-canvas` 的缺省规则由组件自己带（见上），不在这个样式表里。
 
-颜色都是 `:root` 上的 CSS 变量，在 `:root` 或任意外层容器上改：
+颜色都是 `:root` 上的 CSS 变量，在 `:root` 或任意外层容器上改。
+
+主题也会设它们：`<StrataCanvas>` 把能从实例的主题推出来的变量写在自己的容器上，是一条特异度为 0 的规则（它自己的 `<style>` 里的 `:where([data-kgs-scope="…"]){…}`），`setTheme` 以后跟着换。只写和 `DARK` 推出来的值不一样的那几个：用缺省主题时一个都不写，你在 `:root` 上设的照样生效；写了的，盖得过从外层继承来的值，而你写在容器上的 `className`、`style` 仍然盖得过它。`themeVars(theme)` 给出同一张表（`--kgs-bg`、`--kgs-overlay` 来自 `background`；`--kgs-text`、`--kgs-border*`、`--kgs-hover`、`--kgs-pressed`、`--kgs-track` 来自 `label.primary`；`--kgs-text-2` 来自 `label.secondary`；`--kgs-text-3` 来自 `plate.caption`；`--kgs-accent*` 来自 `accent`），`themeRule(选择器, 变量)` 给出 CSS，自己的容器也能用。
+
 
 | 变量 | 缺省 | 用在 |
 |---|---|---|
@@ -235,8 +244,10 @@ const PLUGINS = [diffPlugin()] as const
 - 客户端在 hydrate 之后才出现画布，实例建好以后面板才有内容。
 - 用 Next.js 之类的框架时，如果不想在服务端引入 three.js，就让这个组件只在客户端渲染（比如用关掉 SSR 的动态引入）。
 
-验证过：Node 24 + React 19 下，`renderToString(<StrataCanvas data={null}><LayerList /></StrataCanvas>)` 返回 `<div class="kgs-canvas"></div><ol class="kgs-layer-list" aria-label="Layers"></ol>`。
+`<StrataCanvas>` 只在浏览器里用 `useLayoutEffect`（服务端换成 `useEffect`），所以 React 18 不会打“useLayoutEffect does nothing on the server”的警告（用 React 18.3.1 实测过，测试里用 `renderToString` 查着）。
+
+测试里查过（`renderToStaticMarkup`，React 19）：`<StrataCanvas data={null}><LayerList /></StrataCanvas>` 渲染成 `<div class="kgs-canvas"><style>:where(.kgs-canvas){…}</style><div class="kgs-canvas-host" style="position:absolute;inset:0"></div><ol class="kgs-layer-list" aria-label="Layers"></ol></div>`。
 
 ## 不用 `<StrataCanvas>`
 
-`kgstrata/react` 还导出了它用到的、不碰 DOM 的部件：`mountStrata`（创建、装插件、给数据，失败时清理）、`bindEvents`、`createStateStore`、`EMPTY_STATE`、`canvasFallback`，以及它们的类型（`MountResult`、`PluginApis`、`StateStore`、`StrataEventProps`、`StrataFactory`、`StrataSource`、`StrataState`、`StrataStateKey`）。
+`kgstrata/react` 还导出了它用到的、不碰 DOM 的部件：`mountStrata`（创建、装插件、给数据，失败时清理）、`bindEvents`、`createStateStore`、`EMPTY_STATE`、`canvasFallback`、`textFor`、`tipLines`、`layerCount`、`themeVars`、`themeRule`、`CANVAS_CSS`、`CANVAS_HOST_STYLE`，以及它们的类型（`MountResult`、`PluginApis`、`StateStore`、`StrataEventProps`、`StrataFactory`、`StrataSource`、`StrataState`、`StrataStateKey`、`TextFn`）。

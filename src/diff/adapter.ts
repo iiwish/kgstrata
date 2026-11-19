@@ -2,11 +2,11 @@
 // 语义（五类变化、颜色、回放编排）全部交给 kgdiff，这里只做坐标、层、抬升这些 3D 才有的事。
 
 import { diff, type GraphInput, type EdgeInput, type NodeInput, type AttrValue } from '@kgdiff/core'
-import type { LayoutResult } from '@kgdiff/layout'
 import {
   buildScene,
   createViewState,
   createVisualResolver,
+  parseColor as parseKgdiffColor,
   type ChangeFamily,
   type FrameVisuals,
   type LabelVisual,
@@ -24,46 +24,61 @@ import type {
   StrataLayout,
 } from '../types.js'
 
-import { DEFAULT_LOCALE, message, type Locale } from '../locale.js'
+import { unionData } from '../layout.js'
+import { DEFAULT_LOCALE, builtinLocaleOf, message, type Locale } from '../locale.js'
 import { DEFAULT_SHAPE, magnitudeOf } from '../model.js'
 import { DARK, type Theme } from '../theme.js'
 
 export type { ChangeFamily }
 
+/** One change. Ids throughout: node ids of the union of both versions, layer ids. */
 export interface DiffHunk {
-  index: number
+  /** The change's id (from kgdiff), as `selectHunk`, `shot` and `DiffView.selectedHunk` take it. */
   id: string
   kind: string
   family: ChangeFamily
   title: string
   subtitle: string
-  /** 这个 hunk 自己的节点（base 下标）；relations 类 hunk 没有自己的节点，此时为它的上下文节点 */
-  nodes: number[]
-  /** 读懂它需要的上下文节点（base 下标，不含 nodes） */
-  context: number[]
-  /** nodes 的盘面重心 */
+  /** The change's own nodes (ids); for a relation change, which has none, its context nodes. */
+  nodes: string[]
+  /** Context nodes needed to read it (ids, not in `nodes`). */
+  context: string[]
+  /** Plate centroid of `nodes`. */
   center: [number, number]
-  /** nodes 里出现最多的层 */
-  layer: number
+  /** The layer most of `nodes` are in (layer id); following and per-layer counts use it. */
+  layer: string
   radius: number
-  /** 回放窗口（ms，1× 速度） */
+  /** Replay window start (ms at 1× speed). */
   start: number
+  /** Replay window end (ms at 1× speed). */
   end: number
 }
 
+/** A computed comparison, as `diff.show` resolves and `enter` carries it. */
 export interface StrataDiff {
-  scene: Scene
-  base: { nodes: BaseNode[]; edges: BaseEdge[] }
   hunks: DiffHunk[]
+  /** Length of one replay (ms at 1× speed). */
   duration: number
-  /** 节点 + 边的合计 */
+  /** Nodes plus edges. */
   stats: { added: number; removed: number; changed: number }
+  /** Low level: kgdiff's scene. Indexes and shape follow kgdiff; not covered by semver. */
+  scene: Scene
+  /** Low level: the union drawn (indexes match `scene`); not covered by semver. */
+  base: { nodes: BaseNode[]; edges: BaseEdge[] }
 }
 
+/** What a diff view shows, as `diff.view`, `diff.update` and `StrataView.diff` use it. */
 export interface DiffView {
+  /** Union of both versions, before, after, or replay. */
   layer: 'union' | 'before' | 'after' | 'replay'
+  /** Replay position (ms). */
   t: number
-  selectedHunk: number
+  /** The selected change (`DiffHunk.id`), or `null`. */
+  selectedHunk: string | null
+}
+
+/** Low level: the full per-frame state given to kgdiff (`DiffView` plus hovered and selected base indexes). Not covered by semver. */
+export interface DiffFrameState extends DiffView {
   hoveredNode: number
   selectedNode: number
   reducedMotion: boolean
@@ -71,22 +86,21 @@ export interface DiffView {
 }
 
 // kgstrata 自己放进 kgdiff 图里的东西都带 strata 前缀，不会和用户数据里的关系类型、属性撞名
-/** 包含关系（子 → 父）的谓词：子节点换了父节点，kgdiff 认成“挪位置” */
+/** Predicate of containment (child → parent) in the kgdiff graph; a new parent is reported as a move. */
 export const HIERARCHY_PREDICATE = 'strata:parent'
 /** 没写类型的关系用的谓词 */
 const DEFAULT_PREDICATE = 'strata:related'
-/** 节点在哪一层、哪个组、里面收着哪些子节点；关系的分量 */
+/** Attribute names kgstrata writes into the kgdiff graph: layer, group, folded children, relation weight. */
 export const ATTR = { layer: 'strata.layer', group: 'strata.group', folds: 'strata.folds', weight: 'strata.weight' } as const
 
 
 // ─── Resolved → kgdiff 图 ──────────────────────────────────────────────────
 
 /**
- * replaces：新节点 id → 它吸收了哪些旧节点（kgdiff 会认成合并）。
- * 节点的 type 是它自己的类型（实体、表……）；层和组是属性，换层、换组都报成属性变了。
- * 收在节点里的子节点（表里的字段）记成一条属性：没展开的时候，加字段、删字段也看得到。
- * 关系带着 id、分量和属性：映射的分量变了、口径变了都算变化。
- * locale：没写类型的关系、包含关系显示成什么字（kgdiff 写变化说明时用）；谓词本身不随语言变。
+ * Converts resolved data to a kgdiff graph. `replaces`: new node id → old nodes it absorbs (reported as a
+ * merge). Layer and group are attributes; folded children are one attribute, so added or removed fields
+ * show while collapsed. Relations carry id, weight and attributes. `locale`: display names of untyped and
+ * containment relations (the predicates do not change).
  */
 export function toKgdiffGraph(data: Resolved, replaces: Record<string, string[]> = {}, locale: Locale = DEFAULT_LOCALE): GraphInput {
   const related = message(locale, 'label.related')
@@ -123,6 +137,7 @@ function specIndex(data: Resolved): Map<string, ResolvedNode> {
 
 // ─── 构建 ────────────────────────────────────────────────────────────────────
 
+/** Computes the comparison of two resolved versions on a shared layout (kgdiff does the semantics). */
 export async function buildStrataDiff(
   before: Resolved,
   after: Resolved,
@@ -146,27 +161,18 @@ export async function buildStrataDiff(
 
   const positions = new Map<string, { x: number; y: number }>()
   const radii = new Map<string, number>()
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
   for (const u of res.nodes) {
     const p = placedOf(u.id)
     // 布局漏掉的节点放在盘心，避免 kgdiff 把它挤出场景、下标对不上
     const x = p?.x ?? 0, y = p?.z ?? 0, r = p?.r ?? 0.5
     positions.set(u.id, { x, y })
     radii.set(u.id, r)
-    x0 = Math.min(x0, x - r); y0 = Math.min(y0, y - r); x1 = Math.max(x1, x + r); y1 = Math.max(y1, y + r)
   }
-  if (!Number.isFinite(x0)) { x0 = y0 = 0; x1 = y1 = 1 }
-  const kgLayout = {
-    positions,
-    radii,
-    bounds: { x: x0, y: y0, width: x1 - x0, height: y1 - y0 },
-    scope: 'all',
-    hidden: new Map(),
-    components: [],
-    stats: { strategy: 'union', iterations: 0, nodes: res.nodes.length, ms: 0 },
-  } as unknown as LayoutResult
 
-  const scene = buildScene(res, kgLayout, { theme: (opts.theme ?? DARK).diffScheme, locale })
+  // kgdiff 只认 'en'、'zh-CN'：别的语言顺着回退链落到内置的那一种（多半是 'en'）
+  const scene = buildScene(res, { positions, radii }, { theme: (opts.theme ?? DARK).diffScheme, locale: builtinLocaleOf(locale) })
+  // 布局的层下标是对两版合集说的（和看变化插件交给 buildModel 的那份同一个顺序）
+  const layerIds = unionData(before, after).layers.map((l) => l.id)
 
   const beforeSpecs = specIndex(before)
   const afterSpecs = specIndex(after)
@@ -215,17 +221,17 @@ export async function buildStrataDiff(
     let far = 0
     for (const i of pts) far = Math.max(far, Math.hypot(scene.nodes[i].x - cx, scene.nodes[i].y - cz))
     const w = windowOf.get(h.index)
+    const idOf = (i: number) => baseNodes[i].id
     return {
-      index: h.index,
       id: h.id,
       kind: h.kind,
       family: h.family,
       title: h.title,
       subtitle: h.subtitle,
-      nodes: own.length ? own : context,
-      context: own.length ? context : [],
+      nodes: (own.length ? own : context).map(idOf),
+      context: own.length ? context.map(idOf) : [],
       center: [cx, cz],
-      layer,
+      layer: layerIds[layer] ?? '',
       radius: far + 4,
       start: w?.start ?? 0,
       end: w?.end ?? 0,
@@ -246,23 +252,21 @@ export async function buildStrataDiff(
   }
 }
 
-// ─── 颜色：kgdiff 可能给 rgba()，契约要 #rrggbb，透明度并进 alpha ─────────
+// ─── 颜色：kgdiff 给的是 CSS 颜色串，契约要 #rrggbb，透明度并进 alpha ─────────
 
 interface Rgb { hex: string; a: number }
 const colorCache = new Map<string, Rgb>()
 function parseColor(c: string): Rgb {
   let v = colorCache.get(c)
   if (v) return v
-  const m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/i.exec(c)
-  if (m) {
-    const h = (n: string) => Math.round(Math.min(255, Number(n))).toString(16).padStart(2, '0')
-    v = { hex: `#${h(m[1])}${h(m[2])}${h(m[3])}`, a: m[4] === undefined ? 1 : Number(m[4]) }
-  } else if (/^#[0-9a-f]{8}$/i.test(c)) {
-    v = { hex: c.slice(0, 7).toLowerCase(), a: parseInt(c.slice(7), 16) / 255 }
-  } else if (/^#[0-9a-f]{3}$/i.test(c)) {
-    v = { hex: `#${c[1]}${c[1]}${c[2]}${c[2]}${c[3]}${c[3]}`.toLowerCase(), a: 1 }
-  } else {
-    v = { hex: c, a: 1 }
+  // kgdiff 只保证画得出来的东西（可见的节点、边，所有 glyph）的颜色它的 parseColor 认得，认不得会抛错。
+  // 我们每帧连不可见的也一起换算：认不得的当透明，不让一帧因为看不见的东西抛错
+  try {
+    const { r, g, b, a } = parseKgdiffColor(c)
+    const h = (n: number) => Math.round(n).toString(16).padStart(2, '0')
+    v = { hex: `#${h(r)}${h(g)}${h(b)}`, a }
+  } catch {
+    v = { hex: '#000000', a: 0 }
   }
   colorCache.set(c, v)
   return v
@@ -311,9 +315,31 @@ function toLabel(v: LabelVisual | null, prev: LabelLook | null, mono: boolean): 
 
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v)
 
-export function createDiffLooks(d: StrataDiff): { resolve(view: DiffView, out?: Looks): Looks } {
+/** Low level: a change as base indexes (own nodes, context) and its kgdiff scene number. */
+export interface HunkIndex {
+  nodes: number[]
+  context: number[]
+  /** Its number in kgdiff's scene (`scene.hunks[k].index`). */
+  scene: number
+}
+
+/** Low level: maps changes back to base indexes (used by the plugin and per-frame styling). */
+export function hunkIndex(d: StrataDiff): { hunks: HunkIndex[]; byId: Map<string, number> } {
+  const at = new Map(d.base.nodes.map((n, i) => [n.id, i]))
+  const byId = new Map<string, number>()
+  const hunks = d.hunks.map((h, k) => {
+    byId.set(h.id, k)
+    const idx = (ids: string[]) => ids.map((id) => at.get(id)).filter((i): i is number => i !== undefined)
+    return { nodes: idx(h.nodes), context: idx(h.context), scene: d.scene.hunks[k]?.index ?? k }
+  })
+  return { hunks, byId }
+}
+
+/** Low level: the per-frame looks of a comparison, from kgdiff's visual resolver. */
+export function createDiffLooks(d: StrataDiff): { resolve(view: DiffFrameState, out?: Looks): Looks } {
   const { scene, base } = d
   const resolver = createVisualResolver(scene)
+  const { hunks: hx, byId } = hunkIndex(d)
   const neutralNode = scene.theme.neutral.node
   const nodeCount = base.nodes.length
   const edgeCount = base.edges.length
@@ -326,41 +352,33 @@ export function createDiffLooks(d: StrataDiff): { resolve(view: DiffView, out?: 
   }
 
   // 每个 hunk 碰到哪些层（自己的节点 + 上下文），聚焦时其他层压暗
-  const hunkLayers = d.hunks.map((h) => {
+  const hunkLayers = hx.map((h) => {
     const m = new Uint8Array(layerCount)
     for (const i of h.nodes) m[base.nodes[i].layer] = 1
     for (const i of h.context) m[base.nodes[i].layer] = 1
     return m
   })
+  // kgdiff 的场景编号 → 我们的下标
+  const atScene = new Map(hx.map((h, k) => [h.scene, k]))
   // 节点所在 hunk 的回放开始时刻：删除节点只在自己的窗口开始后才下沉，别被别的 hunk 的压暗带着沉
   const nodeHunkStart = new Float64Array(nodeCount).fill(Infinity)
   for (let i = 0; i < nodeCount; i++) {
-    const h = scene.nodes[i].hunk
-    if (h >= 0 && d.hunks[h]) nodeHunkStart[i] = d.hunks[h].start
+    const h = atScene.get(scene.nodes[i].hunk)
+    if (h !== undefined) nodeHunkStart[i] = d.hunks[h].start
   }
 
   let frame: FrameVisuals | undefined
   const lifts = new Float64Array(nodeCount)
   const ripplePools = new WeakMap<Looks, Looks['ripples']>()
 
-  // glyph 只有平面坐标：找这一帧离它最近的可见节点，借它的层和抬升
-  const nearest = (x: number, y: number) => {
-    let best = -1, bd = Infinity
-    const nodes = frame!.nodes
-    for (let i = 0; i < nodeCount; i++) {
-      const v = nodes[i]
-      const dd = (v.x - x) ** 2 + (v.y - y) ** 2
-      if (dd < bd) { bd = dd; best = i }
-    }
-    return best
-  }
-
-  function resolve(view: DiffView, out?: Looks): Looks {
+  function resolve(view: DiffFrameState, out?: Looks): Looks {
+    const selected = view.selectedHunk !== null ? (byId.get(view.selectedHunk) ?? -1) : -1
+    const selectedScene = selected >= 0 ? hx[selected].scene : -1
     frame = resolver.resolve(
       createViewState({
         layer: view.layer,
         t: view.t,
-        selectedHunk: view.selectedHunk,
+        selectedHunk: selectedScene,
         hoveredNode: view.hoveredNode,
         selectedNode: view.selectedNode,
         reducedMotion: view.reducedMotion,
@@ -394,7 +412,7 @@ export function createDiffLooks(d: StrataDiff): { resolve(view: DiffView, out?: 
       const fill = parseColor(v.fill ?? v.stroke ?? neutralNode)
       o.color = fill.hex
       o.ghost = v.fill === null
-      o.intensity = (v.family !== 'neutral' ? 1.35 : 0.7) * (view.selectedHunk >= 0 && sn.hunk === view.selectedHunk ? 1.15 : 1)
+      o.intensity = (v.family !== 'neutral' ? 1.35 : 0.7) * (selectedScene >= 0 && sn.hunk === selectedScene ? 1.15 : 1)
       o.alpha = v.alpha
       if (v.ring) {
         const c = parseColor(v.ring.color)
@@ -485,8 +503,9 @@ export function createDiffLooks(d: StrataDiff): { resolve(view: DiffView, out?: 
       if (ml.length <= k) ml.push(newEdgeLook())
       const o = ml[k++]
       const c = parseColor(g.color)
-      const na = nearest(g.x1, g.y1)
-      const nb = nearest(g.x2, g.y2)
+      // glyph 带着两端节点的下标（kgdiff 0.12.3 起），借它们的层和抬升
+      const na = g.node1 ?? -1
+      const nb = g.node2 ?? na
       const len = Math.hypot(g.x2 - g.x1, g.y2 - g.y1)
       const arrow = g.kind === 'merge-arrow' || g.kind === 'split-arrow' || g.kind === 'replacement-arrow'
       o.visible = g.alpha > 0.003 && g.progress > 0
@@ -513,10 +532,10 @@ export function createDiffLooks(d: StrataDiff): { resolve(view: DiffView, out?: 
     const ly = looks.layers
     ly.length = layerCount
     ly.fill(1)
-    let focus = view.selectedHunk
+    let focus = selected
     if (focus < 0 && replay) {
       // 回放里没选 hunk 时，跟着正在播的那个
-      for (const h of d.hunks) if (view.t >= h.start && view.t <= h.end) { focus = h.index; break }
+      for (let k = 0; k < d.hunks.length; k++) if (view.t >= d.hunks[k].start && view.t <= d.hunks[k].end) { focus = k; break }
     }
     const touched = focus >= 0 ? hunkLayers[focus] : undefined
     if (touched) {

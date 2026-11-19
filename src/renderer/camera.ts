@@ -18,8 +18,10 @@ export class CameraRig {
   private t = 1
   private duration = 1.2
   idleRotate = true
-  /** 取景用的宽高比：右侧有面板挡着时只算没被挡住的那块 */
+  /** 取景用的宽高比：有面板挡着时只算没被挡住的那块 */
   fitAspect = 1
+  /** 没被挡住的那块占虚拟画布高度的比例（上下有面板挡着时小于 1）：取景时竖直视角按它收窄 */
+  fitHeight = 1
   private idleSince = 0
 
   constructor(dom: HTMLElement) {
@@ -73,7 +75,7 @@ export class CameraRig {
     let r = 0
     for (const p of points) r = Math.max(r, c.distanceTo(new Vector3(...p)))
     r = Math.max(r, 5) * (opts.margin ?? 1.25)
-    const fov = (38 * Math.PI) / 180
+    const fov = 2 * Math.atan(Math.tan((38 * Math.PI) / 360) * this.fitHeight)
     const aspect = Math.max(this.fitAspect, 0.3)
     // 竖屏时按水平视角算，整组盘才放得下
     const hfov = 2 * Math.atan(Math.tan(fov / 2) * aspect)
@@ -96,7 +98,7 @@ export class CameraRig {
     const back = new Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el))
     const right = new Vector3(Math.cos(az), 0, -Math.sin(az))
     const up = new Vector3().crossVectors(back, right)
-    const ty = Math.tan(((38 * Math.PI) / 180) / 2)
+    const ty = Math.tan(((38 * Math.PI) / 180) / 2) * this.fitHeight
     const tx = ty * Math.max(this.fitAspect, 0.3)
     const limX = 1 - (opts.padX ?? 0.05)
     const top = 1 - (opts.padTop ?? 0.1)

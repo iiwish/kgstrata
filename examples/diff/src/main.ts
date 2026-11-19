@@ -19,8 +19,8 @@ if (result) {
     li.innerHTML = `<span></span><small></small>`
     li.querySelector('span')!.textContent = hunk.title
     li.querySelector('small')!.textContent = hunk.subtitle
-    // Select a change: the camera frames it.
-    li.addEventListener('click', () => diff.selectHunk(hunk.index))
+    // Select a change by its id: the camera frames it.
+    li.addEventListener('click', () => diff.selectHunk(hunk.id))
     list.append(li)
   }
 }
@@ -29,7 +29,7 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('button[data-l
   const layer = button.dataset.layer as 'union' | 'before' | 'after'
   button.addEventListener('click', () => {
     diff.play(false)
-    diff.setView({ layer, t: 0, selectedHunk: -1 })
+    diff.update({ layer, t: 0, selectedHunk: null })
   })
 }
 document.getElementById('play')!.addEventListener('click', () => diff.play(!diff.playing))

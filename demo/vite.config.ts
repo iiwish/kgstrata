@@ -10,6 +10,7 @@ const lib = (p: string) => fileURLToPath(new URL(`../src/${p}`, import.meta.url)
 export const KGSTRATA_ALIASES: Alias[] = [
   { find: /^kgstrata$/, replacement: lib('index.ts') },
   { find: /^kgstrata\/headless$/, replacement: lib('headless.ts') },
+  { find: /^kgstrata\/internals$/, replacement: lib('internals.ts') },
   { find: /^kgstrata\/path$/, replacement: lib('path/index.ts') },
   { find: /^kgstrata\/diff$/, replacement: lib('diff/index.ts') },
   { find: /^kgstrata\/react$/, replacement: lib('react/index.ts') },

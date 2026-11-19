@@ -8,9 +8,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@kgdiff/core": "^0.12.1",
-    "@kgdiff/layout": "^0.12.1",
-    "@kgdiff/scene": "^0.12.1",
+    "@kgdiff/compute": "^0.12.3",
+    "@kgdiff/core": "^0.12.3",
+    "@kgdiff/layout": "^0.12.3",
+    "@kgdiff/scene": "^0.12.3",
     "kgstrata": "workspace:*",
     "three": "0.187.0"
   },

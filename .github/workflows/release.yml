@@ -1,13 +1,15 @@
 name: Release
 
-# 推一个 v* 的标签（比如 v0.1.0）就发布到 npm。标签要和 package.json 的 version 一致。
-# 需要在仓库的 Settings → Secrets 里配 NPM_TOKEN（npm 上的 Automation 或 Granular token）。
+# 推一个 v* 的标签（比如 v0.1.0）就发布到 npm，发布成功后建对应的 GitHub Release（正文取 CHANGELOG.md 里这个版本的那一节）。
+# 标签要和 package.json 的 version 一致。需要在仓库的 Settings → Secrets 里配 NPM_TOKEN（npm 上的 Automation 或 Granular token）；
+# 建 Release 用的是工作流自带的 GITHUB_TOKEN（要 contents: write）。
 on:
   push:
     tags: ['v*']
 
 permissions:
-  contents: read
+  # 建 GitHub Release 要写权限
+  contents: write
   # npm 的 provenance：证明这个包是从这个仓库、这次构建发出去的
   id-token: write
 
@@ -30,9 +32,28 @@ jobs:
             echo "标签 $GITHUB_REF_NAME 和 package.json 的版本 $version 对不上"
             exit 1
           fi
+      # 先把这个版本在 CHANGELOG 里的那一节取出来：没有这一节就不发（发布前就该写好）
+      - name: 取 CHANGELOG 里这个版本的那一节
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            index($0, "## [" v "]") == 1 { on = 1; next }
+            on && /^## \[/ { exit }
+            on && /^\[[^]]+\]: / { exit }
+            on { print }
+          ' CHANGELOG.md > "$RUNNER_TEMP/release-notes.md"
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/release-notes.md"; then
+            echo "CHANGELOG.md 里没有 ## [$version] 这一节（或者是空的）"
+            exit 1
+          fi
       - run: pnpm typecheck
       - run: pnpm test
       # prepublishOnly 会再跑一遍 pnpm build 和 pnpm check:pack
       - run: pnpm publish --no-git-checks --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # 发布成功了才建 Release；标签已经在了，gh 直接用它
+      - name: 建 GitHub Release
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/release-notes.md" --verify-tag
+        env:
+          GH_TOKEN: ${{ github.token }}

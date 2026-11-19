@@ -11,39 +11,46 @@ import { STEP, paintPath, rankOf, reachedAt, stepsOf, type PathPaintModel, type 
 export { DIGITS, STEP, paintPath, rankOf, reachedAt, segmentProgress, stepsOf, type PathPaintModel, type PathRun } from './steps.js'
 
 // 装了路径插件，视图状态里多一项 path
-declare module '../engine.js' {
+declare module '../engine/types.js' {
   interface StrataView {
-    /** 正在走的路径（节点的 id，按顺序）。恢复时从头走。装了路径插件才有这一项 */
+    /** The path being replayed (node ids, in order); replay restarts from the beginning when restored. Only with the path plugin installed. */
     path?: string[] | null
   }
 }
 
-/** 现在这条路径实际走的节点（隐藏层里的被跳过了），以及已经点亮了几个 */
+/** The nodes the path actually visits (steps in hidden layers are skipped), and how many are lit so far. */
 export interface PathProgress {
   ids: string[]
   reached: number
 }
 
 export interface PathEvents {
-  /** 实际走的节点变了，或者又点亮了一个 */
+  /** The visited nodes changed, or one more was lit. */
   step: PathProgress
 }
 
 export interface PathApi {
-  /** 走一条路径（节点的 id，按顺序）。收在父节点里的那一步算在父节点头上，隐藏层里的跳过 */
+  /** Replays a path (node ids, in order). A folded step counts as its drawn ancestor; steps in hidden layers are skipped. */
   play(ids: string[]): void
+  /** Stops and removes the path. If the path framed the camera and the user has not moved it since, the camera returns to the overview. */
   clear(): void
-  /** play 给的那串 id；没有是 null */
+  /** The ids given to `play`; `null` when there is no path. */
   readonly ids: string[] | null
-  /** 点亮到第几个节点了 */
-  readonly reached: number
-  /** 实际走的节点和点亮了几个 */
-  readonly live: PathProgress
-  /** 镜头框住整条路径 */
-  shot(): void
+  /** The visited nodes and how many are lit (what the `step` event carries). */
+  readonly progress: PathProgress
+  /** Frames the whole path. `opts.duration` in seconds (default 1.2; `0` jumps). */
+  shot(opts?: PathShotOptions): void
+  /** Subscribes to a path event. Returns the unsubscribe function. */
   on<K extends keyof PathEvents>(event: K, cb: (v: PathEvents[K]) => void): () => void
 }
 
+/** Options of `path.shot()`. */
+export interface PathShotOptions {
+  /** Seconds; `0` jumps. Default `1.2`. */
+  duration?: number
+}
+
+/** The path replay plugin: `const path = strata.use(pathPlugin())`. Registers `path` in the view state. */
 export function pathPlugin(): StrataPlugin<PathApi> {
   return { name: 'path', install }
 }
@@ -70,7 +77,7 @@ function install(ctx: StrataContext): PathApi {
   let lastReached = 0
 
   const reached = () => (run ? Math.max(0, reachedAt(ctx.time - run.start, run.nodes.length)) : 0)
-  const live = (): PathProgress => {
+  const progress = (): PathProgress => {
     const m = ctx.model
     if (!run || !m) return { ids: [], reached: 0 }
     return { ids: run.nodes.map((i) => m.base.nodes[i].id), reached: reached() }
@@ -89,18 +96,17 @@ function install(ctx: StrataContext): PathApi {
     run.dashed = dashed
   }
 
-  const shot = () => {
+  const shot = (opts: PathShotOptions = {}) => {
     const m = ctx.model
     if (!run || !m || ctx.mode) return
     ctx.fit(
-      run.nodes.map((i) => {
-        const n = m.base.nodes[i]
-        const p = m.layout.nodes.get(n.id)!
-        return { layer: n.layer, x: p.x, z: p.z }
-      }),
-      { elevation: 0.46, margin: 1.5 },
+      run.nodes.map((i) => m.base.nodes[i].id),
+      { elevation: 0.46, margin: 1.5, duration: opts.duration },
     )
   }
+
+  /** 第 i 个节点所在的层（id） */
+  const layerOf = (m: Model, i: number) => m.data.layers[m.base.nodes[i].layer].id
 
   const play = (next: string[]) => {
     const m = ctx.model
@@ -114,31 +120,38 @@ function install(ctx: StrataContext): PathApi {
     ctx.select(null)
     if (ctx.reducedMotion) run.start = ctx.time - STEP * nodes.length
     // 跟随：路径从哪一层起步，哪一层先当主角；走到另一层时在每帧里换
-    if (nodes.length) ctx.followTo(m.base.nodes[nodes[0]].layer, 'none')
+    if (nodes.length) ctx.followTo(layerOf(m, nodes[0]), 'none')
     shot()
   }
 
-  const clear = () => {
+  // 忘掉路径；镜头归谁由调用的地方定
+  const forget = () => {
     ids = null
     run = null
   }
+  // 对外的 clear：路径框过的镜头交还给总览（用户动过镜头就不动）
+  const clear = () => {
+    const had = ids !== null
+    forget()
+    if (had && !ctx.mode) ctx.releaseCamera()
+  }
 
   ctx.onChange((change) => {
-    if (change === 'data' || change === 'mode') clear()
+    if (change === 'data' || change === 'mode') forget()
     else rebuild()
   })
-  // 点在空白处：这一趟停下
-  ctx.on('select', (info) => {
-    if (info === null) run = null
+  // 点在空白处：这一趟停下。再点一次选中的节点（放开选中）不算，程序清掉选中也不算：play 自己就会清
+  ctx.on('select', (e) => {
+    if (e.source === 'pointer' && e.pointer?.hit === null) run = null
   })
   ctx.onFrame(() => {
     // 跟随：路径走到另一层，主角跟过去，镜头按新的大小重新框住整条路径
     const m = ctx.model
     if (run && m && !ctx.mode) {
       const k = reached()
-      if (k > 0) ctx.followTo(m.base.nodes[run.nodes[k - 1]].layer, shot)
+      if (k > 0) ctx.followTo(layerOf(m, run.nodes[k - 1]), () => shot())
     }
-    const now = live()
+    const now = progress()
     if (now.reached !== lastReached || now.ids.length !== lastIds.length || now.ids.some((id, k) => id !== lastIds[k])) {
       lastIds = now.ids
       lastReached = now.reached
@@ -160,7 +173,8 @@ function install(ctx: StrataContext): PathApi {
   })
   ctx.registerView<string[] | null>('path', {
     get: () => (ids ? [...ids] : null),
-    set: (v) => (v ? play(v) : clear()),
+    // 恢复视图时镜头由视图状态自己定
+    set: (v) => (v ? play(v) : forget()),
   })
   ctx.onDispose(() => events.clear())
 
@@ -170,11 +184,8 @@ function install(ctx: StrataContext): PathApi {
     get ids() {
       return ids ? [...ids] : null
     },
-    get reached() {
-      return reached()
-    },
-    get live() {
-      return live()
+    get progress() {
+      return progress()
     },
     shot,
     on: (event, cb) => events.on(event, cb),

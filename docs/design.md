@@ -36,7 +36,7 @@ The input is four flat lists: layers, nodes, relations, groupings (`StrataData` 
 - **Groupings have dimensions**, and each layer uses its own. Sectors are only assigned to the groups of the anchor layer's dimension.
 - **Every layer is a graph.** Earlier versions had tree, drop-point and outer-ring layouts. The core problem did not need them and they were removed; containment is expressed with `parent` everywhere.
 - **Check before use** (`resolve.ts`). `validate` lists problems, `normalize` drops unusable items. Layout, styling and comparison only consume the output of `project` (`Resolved`), where every reference is valid and every relation has an id.
-- **The public API speaks ids, not indexes.** The view state (hero weights, hidden layers, expanded nodes, selection, emphasized group, focused layer, spacing, camera, plus slots registered by plugins such as the path) is read and restored as a whole with `getView` / `setView`.
+- **The public API speaks ids, not indexes, without exceptions:** shots, hover and select payloads (layer and group ids, with names alongside), diff hunks. Indexes stay inside the plugin-author context (`StrataContext`) and `kgstrata/internals`. Programmatic and pointer selection take the same path (`select` event with a `source`). The view state (hero weights, hidden layers, expanded nodes, selection, emphasized group, focused layer, spacing, camera, plus slots registered by plugins such as the path) is read and restored as a whole with `view` / `setView`.
 - **Extra lines in each frame's `Looks` have their own lists.** `edges` matches the base edges one to one; bridges, path segments and kgdiff marks live in `extra.bridges` / `extra.path` / `extra.marks` instead of depending on positions in one array.
 
 ### What goes to kgdiff
@@ -58,19 +58,19 @@ The core `Strata` only draws a layered graph: data (normalize / project), layout
 
 - read: the normal model, the current model, who has taken over, renderer, time, reduced motion, hidden layers, expanded nodes, id → index;
 - use the core's rules: normalize with the instance options (`normalize`), lay out with them (`layoutOf`);
-- change: take over (`takeOver`) and release (`release`), rebuild the normal view for the current expanded set (`rebuild`), follow (`followTo`, optionally with a "reframe if the hero changed" callback), release focus, select, frame points on the plates (`fit`);
+- change: take over (`takeOver`) and release (`release`), rebuild the normal view for the current expanded set (`rebuild`), follow (`followTo(layerId)`, optionally with a "reframe if the hero changed" callback), release focus, select, frame nodes (`fit(nodeIds)`) or points on the plates (`fitPoints`);
 - hooks: overlays (`overlay`), every frame (`onFrame`), state changes (`onChange`: new data, normal view rebuilt, hidden layers changed, a mode took over), expand (`onExpand`: return true to handle it), dispose, view state slots (`registerView`), core events.
 
 **Overlays and modes.** An overlay adds to the normal view. Path replay gives the styler a sequence of nodes to emphasize (`Spotlight`; the styler dims the rest, which has to be combined in order with focus and hero dimming, so it happens in the styler), then writes step numbers, `extra.path` segments and ripples into `Looks` itself. A mode takes over what is drawn. Version comparison swaps in the union of both versions as the base and gets `Looks` from kgdiff; its "quiet background" rule (unchanged nodes lose their labels, unchanged edges dim) is applied in the same step. At most one mode is active at a time; when it takes over, hero weights are carried over by layer id and hidden layers stay hidden. Expanding a node during a comparison is handled by the plugin, which compares again.
 
 **One pipeline per frame** (`pipeline.ts`): ① base style (the core styler, or the active mode) → ② overlays (only without a mode) → ③ core post-processing (hidden layers fade out, for the normal view and modes alike). Each writer owns its part: the styler does not know about paths, the core does not know about kgdiff's quiet rule.
 
-**View state and camera.** `getView` / `setView` cover the core fields; a plugin registers its own slot with `registerView` and it is saved and restored together (the path plugin registers `path`; without the plugin the field does not exist; its type is added to `StrataView` with `declare module`). The core camera shots are `overview` / `top` / `layer`; framing a path or a change belongs to the plugins via `ctx.fit`. Events follow the same rule: core events are fixed, plugin events live on the plugin API.
+**View state and camera.** `view` / `setView` cover the core fields; a plugin registers its own slot with `registerView` and it is saved and restored together (the path plugin registers `path`; without the plugin the field does not exist; its type is added to `StrataView` with `declare module`). The core camera shots are `overview` / `top` / `layer`; framing a path or a change belongs to the plugins via `ctx.fit`. Inside the core, `Strata` only orchestrates; each concern is its own module under `src/engine/` (see [Modules](#modules)), and the parts that need no WebGL (the hero state machine, the restore order of `setView`, which points each shot frames, the proportions with hidden layers) are pure and tested on their own. Events follow the same rule: core events are fixed, plugin events live on the plugin API.
 
 ## Language, theme and per-instance state
 
 - **Every human-readable string goes through the message table** (`locale.ts`): validation messages, errors, display labels given to kgdiff ("related to", "part of"). Machine-readable things stay out: issue and error `code`s, predicates (`strata:parent`). The default is English; `StrataOptions.locale` / `validate(data, { locale })` switch it; the comparison plugin follows the core unless told otherwise. The table is plain data with no three.js, so the headless entry uses it too.
-- **Themes are per instance** (`theme.ts`): `DARK` is the frozen default and `createTheme(overrides)` returns a new object every time. The theme travels down from the engine: model (dot grid colour), styler, every part of the renderer (background, plates, label fonts and outlines), path, comparison (kgdiff's colour scheme). Pure functions take it from options: `normalize` defaults to `DARK.palette`.
+- **Themes are per instance** (`theme.ts`): `DARK` is the frozen default and `createTheme(overrides)` returns a new object every time. The theme travels down from the engine: model (dot grid colour), styler, every part of the renderer (background, plates, label fonts and outlines), path, comparison (kgdiff's colour scheme). Pure functions take it from options: `normalize` defaults to `DARK.palette`. Every field has an effect at any time: `fog.near` / `fog.far` are distances behind the camera target, applied every frame; giving only `background` derives the `backdrop` gradient from it, so "another background colour" is one line. `<StrataCanvas>` writes the panel colours that differ from `DARK` as `--kgs-*` variables on its container, so panels follow `setTheme`.
 - **No mutable module-level state.** Fog uniforms belong to one renderer, and materials reference their own copy. What remains at module level is pure caches (hex → RGB, kgdiff colour parsing) and constant tables.
 - **Context loss**: the loop stops and `contextlost` is emitted; when the context comes back three.js rebuilds GL state and re-uploads resources on demand, the renderer restores what three.js does not handle (clear colour, size and post-processing targets, canvas textures), the loop resumes and `contextrestored` is emitted.
 
@@ -82,9 +82,18 @@ The two graphs matter equally, but they are not shown as equals at the same time
 - **Other layers support it**: the layer next to the hero is drawn at 0.56 of the hero's size, one step darker, with only the main labels; layers further away are smaller and darker. With the ontology as hero, the tables show below it; with the tables as hero, the ontology sits smaller above.
 - **Which layer is the hero is a parameter**: `new Strata(host, { hero: 'layer id' })`; at runtime `setHero('layer id')` and the `hero` event. Positions and correspondences do not change, only sizes. The size of the next layer is a parameter too (`secondaryScale`, default 0.56); further layers follow the rules below.
 - **The hero is continuous**: each layer has a hero weight 0..1 (`setHeroMix({ layerId: weight })`). 1 is full size and brightness, 0 is a supporting layer; size, brightness and number of labels follow the weight. `setHero` sets one layer to 1 and the rest to 0. The heaviest layer is the hero. Two layers at 0.5 are the same size; that is a state you can stop in during a transition, but not the recommended default, since it is the composition without a focal point. Whether to give users a slider is up to the integrator; the demo's slider is only a demonstration.
-- **The hero can follow what you ask about** (`followHero`, off by default): selecting a node, a path reaching a layer, or looking at a change makes that layer the hero. Only selection counts, not hover; switching on hover would flicker. After the user has moved the camera, a hero change only resizes and does not take the camera away; during path replay the camera belongs to the replay, and it reframes the whole path when the hero changes.
+- **The hero can follow what you ask about** (`follow`, off by default): selecting a node, a path reaching a layer, or looking at a change makes that layer the hero. Only selection counts, not hover; switching on hover would flicker. After the user has moved the camera, a hero change only resizes and does not take the camera away; during path replay the camera belongs to the replay, and it reframes the whole path when the hero changes.
 - Once the supporting layer is smaller, mapping lines are no longer vertical but form a cone. The alignment property still holds: matching mapping lines do not cross; crossing ones are the mismatches.
 - The **stack** view makes all layers the same size, presses them together and looks from straight above.
+
+### Clicking a layer
+
+"Show me this layer" has one meaning per situation, and the event and the view state always agree:
+
+- **Several layers: clicking a layer makes it the hero.** The hero already is "the layer you are looking at": it fills the view and the others step back. A separate "focused layer" on top of that would be a second, competing answer to the same question (in 0.1 `focusLayer` set the hero but emitted `focus` with a value that `strata.focus` did not have). So with several layers `focusLayer(id)` is the same as `setHero(id)`, `focusLayer(null)` returns to the hero's home, nothing is focused, `strata.focus` stays `null`, and only `hero` is emitted.
+- **One layer: there is no hero**, so `focusLayer` keeps its own meaning: frame that layer; `focus` and `strata.focus` carry its id.
+
+The hero setters return what actually applied (`setHero` and `setHeroMix` return `HeroInfo`, `setLayerVisible` the layer's `LayerInfo`), because the engine adjusts requests: hidden layers get weight 0, the last visible layer cannot be hidden, an all-zero mix is ignored. Returning the result is clearer than ignoring silently.
 
 ## Proportions with several layers
 
@@ -160,7 +169,7 @@ What to keep:
 
 ## React wrapper
 
-`kgstrata/react` only connects the engine to React: `<StrataCanvas>` creates and disposes in an effect (each strict-mode mount gets its own instance), and calls `setData` only when the `data` reference changes; `useStrataState` turns `layers`, `heroInfo`, `expanded` and the focused layer into React state with `useSyncExternalStore`, keeping the same reference when nothing changed. Panels output only `kgs-` prefixed markup; their look is in the optional `styles.css`, their position is up to you. The boundaries hold: `react/index` and `react/path` do not import kgdiff; `react/diff` gets it through `kgstrata/diff`.
+`kgstrata/react` only connects the engine to React: `<StrataCanvas>` creates and disposes in an effect (each strict-mode mount gets its own instance), and calls `setData` only when the `data` reference changes; `useStrataState` turns `layers`, `hero`, `expanded` and the focused layer into React state with `useSyncExternalStore`, keeping the same reference when nothing changed. Panels output only `kgs-` prefixed markup; their look is in the optional `styles.css`, their position is up to you. The boundaries hold: `react/index` and `react/path` do not import kgdiff; `react/diff` gets it through `kgstrata/diff`.
 
 ## Modules
 
@@ -172,7 +181,17 @@ What to keep:
 | `pipeline.ts` | Per-frame pipeline: ① base style → ② overlays → ③ hidden-layer fade |
 | `plugin.ts` | Plugin contract (`StrataPlugin`, `StrataContext`, `StrataOverlay`, `StrataMode`), events, view slots |
 | `renderer/*` | `BaseNode[]` / `BaseEdge[]` + `Looks` → pixels (three.js, instanced) |
-| `engine.ts` | Core `Strata`: ties the above together; camera, picking, events, hero, hidden layers, expanding, plugins |
+| `engine/index.ts` | Core `Strata`: orchestration only; public methods delegate to the modules below |
+| `engine/hero.ts` | Hero state machine (pure): layer ids + hidden set + action → weights, hero, home |
+| `engine/hero-actions.ts` | Hero actions: the state machine wired to layout, camera and the `hero` event |
+| `engine/layers.ts` | Hidden layers (by id, presence fade), proportions with hidden layers, when bridges are computed |
+| `engine/expansion.ts` | Data → model: normalized data, collapsed graph and layout cached; expanded set; model rebuilds |
+| `engine/shots.ts` | Camera shots: which points each shot frames (pure), and handing them to the camera rig |
+| `engine/pointer.ts` | Pointer: hover, click, double-click → node index; node info for events |
+| `engine/view.ts` | View state: `view` assembly, `setView` restore order |
+| `engine/plugins.ts` | Plugin host: `use`, the `ctx`, take-over and release, overlays, the per-frame pipeline |
+| `engine/loop.ts` | The frame loop and WebGL context loss |
+| `engine/core.ts`, `engine/types.ts` | Shared internal state of the modules; the public types (`StrataOptions`, `StrataView`, event payloads) |
 | `path/` | Path replay plugin: steps → spotlight; numbers, segments and ripples painted after styling |
 | `diff/` | Comparison plugin: two `Resolved` + layout → kgdiff scene; per frame → `Looks` (the only place that imports `@kgdiff/*`) |
 

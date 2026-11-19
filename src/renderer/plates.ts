@@ -44,7 +44,8 @@ export interface PlateInput {
 export interface PlatesInput {
   plates: PlateInput[]
   groups: { color: string; name: string; angle: number }[]
-  primary: number
+  /** 基准层的下标：领域名写在它的盘上 */
+  anchor: number
 }
 
 interface Plate {
@@ -148,7 +149,8 @@ const washFragment = /* glsl */ `
   }`
 
 export class Plates {
-  readonly group = new Group()
+  // 显式标注不带泛型的 Group：见 renderer/index.ts 的 scene
+  readonly group: Group = new Group()
   private plates: Plate[] = []
   private textures: Texture[] = []
   /** 每份盘面输入建一次：全景 ↔ 变化来回切时直接换，不再重算点阵 */
@@ -160,10 +162,17 @@ export class Plates {
 
   /** theme、fog：渲染器那一份 */
   constructor(
-    private readonly theme: Theme,
+    private theme: Theme,
     private readonly fog: Fog,
   ) {
     this.grey = new Color(theme.plate.neutral)
+  }
+
+  /** 换主题：缓存的盘面全部作废（下一次 build 按新主题重建），中性灰换掉 */
+  setTheme(theme: Theme) {
+    this.dispose()
+    this.theme = theme
+    this.grey.set(theme.plate.neutral)
   }
 
   build(input: PlatesInput, pixel: number) {
@@ -286,7 +295,7 @@ export class Plates {
 
     // 主图层：领域名平铺在疆域外缘，像地图上的地名
     const names: Plate['names'] = []
-    if (p.index === input.primary) {
+    if (p.index === input.anchor) {
       input.groups.forEach((g, gi) => {
         if (!p.nodes.some((n) => n.group === gi)) return
         const t = textTexture(g.name, { font: this.theme.font, px: 72, weight: 400, spacing: 26 })

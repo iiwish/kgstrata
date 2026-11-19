@@ -3,21 +3,22 @@
 import { mixHex } from '../color.js'
 import type { EdgeLook, Looks, PlacedNode } from '../types.js'
 
-export const STEP = 0.8 // 路径每一步的秒数
+/** Seconds per path step. */
+export const STEP = 0.8
+/** The step numbers drawn next to visited nodes (①…⑳). */
 export const DIGITS = '①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳'
 
-/** 正在走的一趟：实际走的节点（底子的下标）、哪几段跳过了隐藏的层、从什么时候起步 */
+/** One replay run: the visited nodes (base indexes), which segments skip hidden layers, and when it starts (engine clock). */
 export interface PathRun {
   nodes: number[]
-  /** dashed[k]：第 k 步到第 k+1 步之间跳过了隐藏层里的节点，这一段画成虚线 */
+  /** `dashed[k]`: between step k and k+1 nodes in hidden layers were skipped; drawn dashed. */
   dashed: boolean[]
   start: number
 }
 
 /**
- * 原本的步骤（已经换成下标，找不到的是 -1）→ 实际走的步骤。
- * 收在父节点里的那一步算在父节点头上；连着两步落在同一个节点上就并成一步；
- * 经过隐藏的层就跳过那几步，前后两步之间画成虚线。
+ * Steps as given (node indexes, `-1` for unknown) → steps actually visited. Two consecutive steps on the
+ * same node merge; steps in hidden layers are skipped and the segment around them is dashed.
  */
 export function stepsOf(indices: readonly number[], layerOf: (i: number) => number, hidden: ReadonlySet<number>): { nodes: number[]; dashed: boolean[] } {
   const all = indices.filter((i, k, arr) => i >= 0 && i !== arr[k - 1])
@@ -36,17 +37,17 @@ export function stepsOf(indices: readonly number[], layerOf: (i: number) => numb
   return { nodes, dashed }
 }
 
-/** 起步以后过了 elapsed 秒，点亮到第几个节点了（还没起步时可能是 0 或负的，按“一个都没亮”算） */
+/** How many nodes are lit `elapsed` seconds after the start (0 before the start). */
 export function reachedAt(elapsed: number, count: number): number {
   return Math.min(count, Math.floor(elapsed / STEP) + 1)
 }
 
-/** 第 k 段（第 k 步到第 k+1 步）长到哪了 0..1 */
+/** How far segment k (step k to k+1) has grown, 0..1. */
 export function segmentProgress(elapsed: number, k: number): number {
   return Math.max(0, Math.min(1, (elapsed - k * STEP) / STEP))
 }
 
-/** 交给样式的强调串：rank[i] 是第 i 个节点排第几（1 起），0 = 还没走到。同一个节点走到两次，按后一次算 */
+/** The spotlight ranks for the style: `rank[i]` is node i's step (from 1), 0 = not reached. A node visited twice keeps the later step. */
 export function rankOf(nodes: readonly number[], reached: number, out: Int32Array): Int32Array {
   out.fill(0)
   for (let k = 0; k < reached; k++) out[nodes[k]] = k + 1
@@ -72,7 +73,7 @@ function segment(): EdgeLook {
   }
 }
 
-/** 画路径要用的那点模型：名字、位置、每个节点的本色、强调色（主题的 accent） */
+/** What drawing a path needs from the model: labels, ids, positions, node colours and the theme's accent. */
 export interface PathPaintModel {
   labels: readonly string[]
   ids: readonly string[]
@@ -82,9 +83,9 @@ export interface PathPaintModel {
 }
 
 /**
- * ② 往样式算好的 Looks 上叠路径：走到的节点前面标序号，笔尖处盘面荡开一圈，
- * 每一段按顺序长出来、长完以后彗星沿路走（写在 Looks.extra.path 里）。
- * 谁亮谁暗不在这里：那是样式按强调串（rankOf）算的。run 是 null 时把自己的线清掉。
+ * Step ②: paints the path over the styled looks: step numbers on visited nodes, a ripple at the tip,
+ * segments growing in order and then a comet along them (in `Looks.extra.path`). Brightness is the
+ * style's job (`rankOf`). With `run` `null` it clears its own lines.
  */
 export function paintPath(looks: Looks, m: PathPaintModel, run: PathRun | null, time: number) {
   const segs = looks.extra.path

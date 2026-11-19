@@ -26,35 +26,35 @@ const LOOSEST = 0.85
 const TIGHTEST = 0.5
 
 export interface StageInput {
-  /** 每层盘面的半径（世界单位，没缩放的） */
+  /** Plate radius per layer (world units, unscaled). */
   radii: number[]
-  /** 每层当主角的分量 0..1。全是 0 时当作不分主次 */
+  /** Hero weight per layer 0..1. All zero means no hero. */
   mix: number[]
-  /** 紧挨主角的那层缩到多大，缺省 0.56 */
+  /** Size of the layer next to the hero; default 0.56. */
   secondaryScale?: number
-  /** 层距的倍数，缺省 1 */
+  /** Layer spacing multiplier; default 1. */
   spread?: number
 }
 
 export interface Stage {
-  /** 每层的缩放：主角 1；配角 = 主角半径的几成 ÷ 自己的半径 */
+  /** Scale per layer: 1 for the hero; for the others a fraction of the hero's radius over their own. */
   scales: number[]
-  /** 每层的亮度 0..1：主角 1 */
+  /** Brightness per layer 0..1: 1 for the hero. */
   levels: number[]
-  /** 每层有多“配角”：主角 0，紧挨着的 1，更远的大于 1。名字出多少、字号多大按它来 */
+  /** How much of a supporting layer each layer is: 0 for the hero, 1 next to it, more further away. Label count and size follow it. */
   sides: number[]
-  /** 每层的高度（世界单位），整摞上下居中 */
+  /** Height per layer (world units); the stack is centred vertically. */
   heights: number[]
-  /** 这一摞用的松紧（见规则 3），调试和测试用 */
+  /** The tightness used for this stack (for debugging and tests). */
   tightness: number
 }
 
-/** 离主角 d 层远的层缩到多大 */
+/** Scale of a layer `d` steps from the hero. */
 export function scaleAt(d: number, secondaryScale = 0.56): number {
   return d <= 0 ? 1 : Math.max(MIN_SCALE, secondaryScale * Math.pow(SCALE_FALLOFF, d - 1))
 }
 
-/** 离主角 d 层远的层有多亮 */
+/** Brightness of a layer `d` steps from the hero. */
 export function levelAt(d: number): number {
   return d <= 0 ? 1 : Math.max(MIN_LEVEL, SIDE_LEVEL * Math.pow(LEVEL_FALLOFF, d - 1))
 }

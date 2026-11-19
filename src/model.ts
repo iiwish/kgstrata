@@ -86,14 +86,14 @@ export function buildModel(data: Resolved, layout: StrataLayout, theme: Theme = 
     if (!edgeAt.has(`${e.t},${e.s}`)) edgeAt.set(`${e.t},${e.s}`, i)
   })
   const groupColors = data.groups.map((g) => g.color)
-  const primary = Math.max(layout.primary, 0)
+  const anchor = Math.max(layout.anchor, 0)
   const renderer: RendererBase = {
     nodes,
     edges,
     layers: data.layers.length,
-    primary,
+    anchor,
     plates: {
-      primary,
+      anchor,
       groups: data.groups.map((g, gi) => ({ color: g.color, name: g.name, angle: layout.groups[gi]?.angle ?? 0 })),
       plates: data.layers.map((layer, li) => {
         const members = nodes.filter((n) => n.layer === li)
@@ -101,9 +101,10 @@ export function buildModel(data: Resolved, layout: StrataLayout, theme: Theme = 
           index: li,
           radius: layout.radii[li] ?? 12,
           name: layer.name,
-          count: members.length,
-          // 主图层偏冷，对齐过来的图偏暖
-          tone: li !== primary ? theme.tone.aligned : theme.tone.primary,
+          // 盘边写的数：顶层节点数（展开出来的子节点不算，和 LayerInfo.count 一样）
+          count: data.layers[li].nodes.filter((n) => n.parent === undefined).length,
+          // 基准层和对齐过来的图各一种点阵色
+          tone: li !== anchor ? theme.tone.aligned : theme.tone.primary,
           nodes: members.map((n) => {
             const p = layout.nodes.get(n.id)!
             return { x: p.x, z: p.z, group: n.group, weight: p.importance }

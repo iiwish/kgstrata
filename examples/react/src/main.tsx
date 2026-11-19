@@ -6,15 +6,14 @@ import { data } from './data'
 
 function App() {
   return (
-    // <StrataCanvas> renders the canvas element and its children as siblings,
-    // so the positioning context is this wrapper, not the canvas.
+    // <StrataCanvas> is its own positioning context and fills its parent (min-height 320px):
+    // children are drawn over the canvas, so panels just use position: absolute.
     <div style={{ position: 'fixed', inset: 0 }}>
       <StrataCanvas
         data={data}
         options={{ hero: 'onto' }}
-        style={{ position: 'absolute', inset: 0 }}
         onIssues={(issues) => issues.forEach((i) => console.warn(`[${i.code}] ${i.message}`))}
-        onSelect={(info) => console.log('selected', info?.id ?? null)}
+        onSelect={({ node, source }) => console.log('selected', node?.id ?? null, `(${source})`)}
       >
         <aside className="kgs-panel" style={{ position: 'absolute', left: 16, top: 16, width: 200, padding: 8 }}>
           <LayerList />
