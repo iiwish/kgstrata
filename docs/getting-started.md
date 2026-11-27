@@ -13,7 +13,7 @@ npm install kgstrata three
 
 `three` is a peer dependency. The accepted range is `>=0.154.0 <0.200.0`: 0.154 to 0.187 have been run (0.153 fails in the shaders). `d3-force` comes in as a regular dependency.
 
-That is all you need for the core, `kgstrata/path`, `kgstrata/headless` and `kgstrata/react`. Nothing in them loads WebAssembly. A minimal page (the [vanilla example](../examples/vanilla)) builds to about 686 kB of JavaScript including three.js, about 180 kB gzipped.
+That is all you need for the core, `kgstrata/path`, `kgstrata/audit`, `kgstrata/headless` and `kgstrata/react` (with `react/path` and `react/audit`). Nothing in them loads WebAssembly. A minimal page (the [vanilla example](../examples/vanilla)) builds to about 686 kB of JavaScript including three.js, about 180 kB gzipped.
 
 Optional extras:
 
@@ -98,7 +98,7 @@ import.meta.hot?.dispose(() => strata.dispose())
 
 ## Bundlers
 
-The core entries (`kgstrata`, `/path`, `/headless`, `/react`…) are plain ESM and need no configuration anywhere below. The diff entry pulls in kgdiff, which finds its three `.wasm` files with `new URL('…', import.meta.url)`; that is what differs between bundlers. The table was checked with the packed kgstrata 0.2.0 and kgdiff 0.12.3, each build run in a browser (Vite 6 and 8 also with their dev servers, Next.js with server rendering). In the repository, `pnpm check:bundlers --serve` repeats the builds and the browser run:
+The core entries (`kgstrata`, `/path`, `/headless`, `/react`…) are plain ESM and need no configuration anywhere below. The diff entry pulls in kgdiff, which finds its three `.wasm` files with `new URL('…', import.meta.url)`; that is what differs between bundlers. The table was checked with the packed kgstrata 0.3.0 and kgdiff 0.12.3, each build run in a browser (Vite 6 and 8 also with their dev servers, Next.js with server rendering). In the repository, `pnpm check:bundlers --serve` repeats the builds and the browser run:
 
 | Bundler | Core | `kgstrata/diff` |
 |---|---|---|

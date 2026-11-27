@@ -23,9 +23,11 @@
       "kgstrata/internals": ["./src/internals.ts"],
       "kgstrata/path": ["./src/path/index.ts"],
       "kgstrata/diff": ["./src/diff/index.ts"],
+      "kgstrata/audit": ["./src/audit/index.ts"],
       "kgstrata/react": ["./src/react/index.ts"],
       "kgstrata/react/path": ["./src/react/path.tsx"],
       "kgstrata/react/diff": ["./src/react/diff.tsx"],
+      "kgstrata/react/audit": ["./src/react/audit.tsx"],
       "kgstrata/react/styles.css": ["./src/react/styles.css"]
     }
   },

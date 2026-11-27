@@ -30,7 +30,7 @@ Copy a directory and replace the workspace link with a version range:
 
 ```diff
 -    "kgstrata": "workspace:*",
-+    "kgstrata": "^0.2.0",
++    "kgstrata": "^0.3.0",
 ```
 
 Then `npm install && npm run dev`. Nothing else in the examples depends on the repository.
@@ -59,4 +59,4 @@ pnpm dev                # 或者 pnpm typecheck、pnpm build
 
 在根目录跑 `pnpm build:examples` 会对四个示例做类型检查并构建（CI 跑的就是它）。
 
-拿到仓库外面用：把目录拷出去，把 `"kgstrata": "workspace:*"` 换成版本号（比如 `"^0.2.0"`），然后 `npm install && npm run dev`。示例里别的东西都不依赖本仓库。
+拿到仓库外面用：把目录拷出去，把 `"kgstrata": "workspace:*"` 换成版本号（比如 `"^0.3.0"`），然后 `npm install && npm run dev`。示例里别的东西都不依赖本仓库。

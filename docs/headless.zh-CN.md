@@ -179,7 +179,9 @@ const orphans = audit.joins.filter((j) => j.coverage === 'unused')
 - **连接的覆盖**，每条连接一档：两端映射到的上层节点之间有直接关系是 `direct`（`direct` 列出这些关系）；只被给出的路径走到是 `via-path`（`usedBy`）；都不是就是 `unused`。
 - `unmappedUpper` / `unmappedLower`：这两层之间没有映射的节点。
 
-`upper`、`lower` 指定哪两层（层的 id）；只给一个，另一个取相邻的那层。层不存在或者两个一样，抛 `StrataError('audit-layers')`。结果是纯 JSON。关系和连接的 id 是 `project(normalize(data))` 里的，所以从字段上卷上来的关系，id 是两张表的 `source|type|target`。
+`upper`、`lower` 指定哪两层（层的 id）；只给一个，另一个取相邻的那层。层不存在或者两个一样，抛 `StrataError('audit-layers')`。结果是纯 JSON。关系和连接的 id 是 `project(normalize(data))` 里的，所以从字段上卷上来的关系，id 是两张表的 `source|type|target`。结果里的 `maxHops` 记着这次用的上限。
+
+要在图上看缺口，用审计插件（[`kgstrata/audit`](plugins.zh-CN.md#映射审计kgstrataaudit)）和它的清单面板（[`<AuditPanel>`](react.zh-CN.md#auditpanelkgstratareactaudit)）。
 
 ## 穿过隐藏层的连接
 

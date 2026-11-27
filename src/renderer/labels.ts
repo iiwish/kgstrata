@@ -21,8 +21,8 @@ import type { LabelLook } from '../types.js'
 const ATLAS = 2048
 const STEM = 9 // 节点到标签的短竖线（px）
 const PAD = 3
-/** 一屏最多显示的标签数 */
-const MAX_SHOWN = 160
+/** 一屏最多显示的标签数（缺省；LabelOptions.max 可以改） */
+export const MAX_SHOWN = 160
 
 const vertex = /* glsl */ `
   attribute vec3 iAnchor;
@@ -252,7 +252,7 @@ export class Labels {
    * items 顺序固定（槽位 = 下标），这样淡入淡出才连得上。
    * width / height：画布的 CSS 像素尺寸。
    */
-  update(items: LabelItem[], camera: Camera, width: number, height: number, dt: number, focusDist = 0) {
+  update(items: LabelItem[], camera: Camera, width: number, height: number, dt: number, focusDist = 0, max = MAX_SHOWN) {
     const n = Math.min(items.length, this.capacity)
     const heights = this.heights
     // 1. 投影、量尺寸（不画）
@@ -293,7 +293,7 @@ export class Labels {
       this.rects[i * 4 + 1] = top - heights[i] + 2
       this.rects[i * 4 + 3] = top + 2
     }
-    // 2. 按优先级贪心占位；一屏最多 MAX_SHOWN 个，大图也不糊
+    // 2. 按优先级贪心占位；一屏最多 max 个，大图也不糊
     order.sort((a, b) => items[b].look.priority - items[a].look.priority || a - b)
     this.grid.clear()
     const accepted = this.accepted
@@ -301,7 +301,7 @@ export class Labels {
     const CELL = 64
     let shownCount = 0
     for (const i of order) {
-      if (shownCount >= MAX_SHOWN) break
+      if (shownCount >= max) break
       const p = items[i].parent
       if (p >= 0 && !accepted[p]) continue
       const x0 = this.rects[i * 4] - 2

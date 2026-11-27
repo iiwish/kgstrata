@@ -208,6 +208,30 @@ const PLUGINS = [diffPlugin()] as const
 
 `changesByLayer(diff)` counts changes per layer id (each change on `DiffHunk.layer`, the layer most of its nodes are in); pass it to `<LayerList badges>` so hidden layers show how many changes they hide.
 
+### `<AuditPanel>` (`kgstrata/react/audit`)
+
+Two totals (relations that walk, joins a relation matches directly), then the gaps grouped by kind: relations that do not walk, upper nodes not mapped, lower nodes nothing maps onto, unused joins, joins only a path uses. Each group shows its count and colour; each line says why it is a gap. Clicking a line selects it on the map and frames it; clicking it again lets go. Renders nothing until an audit is on screen.
+
+```tsx
+import { auditPlugin } from 'kgstrata/audit'
+import { AuditPanel } from 'kgstrata/react/audit'
+
+const PLUGINS = [auditPlugin()] as const
+
+<StrataCanvas data={data} plugins={PLUGINS} onReady={(_, [audit]) => void audit.show()}>
+  <aside className="kgs-panel"><AuditPanel /></aside>
+</StrataCanvas>
+```
+
+| Prop | Type | Meaning |
+|---|---|---|
+| `audit` | `AuditApi \| null` | Plugin API. Default: the `'audit'` plugin from context. |
+| `colors` | `Partial<{ gap, weak }>` | Override the gap colours. Default: `auditColors(strata.theme)`. |
+| `limit` | `number` | Lines shown per group before "N more". Default 40. |
+| `current` | `MappingAudit \| null` | Supply the audit directly (SSR, tests). |
+
+Node names come from `strata.data`. `auditItems(audit, label?, t?)` returns the same lines as data (`{ group, target, title, detail? }`, in display order) for your own panel.
+
 ## Styles
 
 `import 'kgstrata/react/styles.css'` is optional. Without it the panels are unstyled markup. The stylesheet does not position anything. `.kgs-panel` is a frosted-glass container you can wrap panels in. `.kgs-canvas` gets its defaults from the component itself (see above), not from this stylesheet.

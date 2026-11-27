@@ -1,25 +1,36 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { Strata, StrataOptions } from 'kgstrata'
+import { auditPlugin, type AuditApi } from 'kgstrata/audit'
 import { diffPlugin, type DiffApi, type StrataDiff } from 'kgstrata/diff'
 import { pathPlugin, type PathApi } from 'kgstrata/path'
 import { FollowToggle, HeroMixSlider, LayerList, NodeTip, SpreadSlider, StrataCanvas, ViewButtons } from 'kgstrata/react'
+import { AuditPanel } from 'kgstrata/react/audit'
 import { DiffPanel, changesByLayer } from 'kgstrata/react/diff'
 import { PathList } from 'kgstrata/react/path'
-import { DIFF_REPLACES, diffAfter, groups, layered, layeredPaths, panorama, paths, stress, type DemoLang } from './data'
+import * as shop from './data'
+import { stress, type DemoLang } from './data'
+import * as threekingdoms from './threekingdoms'
+import * as troy from './troy'
 
-type Mode = 'panorama' | 'path' | 'diff'
+type Mode = 'panorama' | 'path' | 'diff' | 'audit'
 /** 引擎和装上的两个插件：只画 3D 图的话只要 strata */
-type Engine = { strata: Strata; path: PathApi; diff: DiffApi }
+type Engine = { strata: Strata; path: PathApi; diff: DiffApi; audit: AuditApi }
 
 // 地址里带 ?stress=3000 时换成合成的大图，看性能
 const QUERY = new URLSearchParams(location.search)
 const STRESS = Number(QUERY.get('stress')) || 0
-// ?hero=table 让物理表当主角；?follow=1 让主角跟着选中和路径走
-// ?hidden=onto 一开始就隐藏本体层（多个用逗号隔开）
-// 默认三层：指标 / 本体 / 物理表。?layers=2 只留本体和物理表，?layers=4 再加一层看板
+// ?hero=person 让人物层当主角（网上商城那份是 ?hero=table）；?follow=1 让主角跟着选中和路径走
+// ?hidden=side 一开始就隐藏阵营层（网上商城那份是 ?hidden=onto；多个用逗号隔开）
+// 默认三层：事件 / 阵营 / 人物。?layers=2 只留阵营和人物（网上商城那份 ?layers=4 再加一层看板）
 const LAYERS = Math.min(4, Math.max(2, Number(QUERY.get('layers')) || 3))
 // ?lang=en / ?lang=zh 选演示数据和界面的语言；不写就跟浏览器
 const LANG: DemoLang = (QUERY.get('lang') ?? navigator.language).toLowerCase().startsWith('zh') ? 'zh' : 'en'
+// 演示数据：中文界面默认三国，英文界面默认特洛伊战争（从上到下都是 事件 / 阵营 / 人物，家族收着成员）；
+// ?data=threekingdoms、?data=troy 指定其中一份，?data=shop 是网上商城（本体 / 物理表，上面叠指标、看板）。压力数据沿用网上商城那份的路径和分组
+const DATA = QUERY.get('data')
+const SAGA = DATA === 'threekingdoms' ? threekingdoms : DATA === 'troy' ? troy : LANG === 'zh' ? threekingdoms : troy
+const SET = STRESS || DATA === 'shop' ? shop : SAGA
+const { DIFF_REPLACES, diffAfter, groups, layered, layeredPaths, panorama, paths } = SET
 const ZH = LANG === 'zh'
 document.documentElement.lang = ZH ? 'zh-CN' : 'en'
 const GROUPS = groups(LANG)
@@ -36,11 +47,12 @@ const OPTIONS: StrataOptions = {
   hero: QUERY.get('hero') ?? undefined,
   follow: QUERY.get('follow') === '1',
   hidden: (QUERY.get('hidden') ?? '').split(',').filter(Boolean),
-  nodeStyles: { board: { shape: 'page' } },
+  nodeStyles: SET === shop ? { board: { shape: 'page' } } : SAGA.NODE_STYLES,
   locale: ZH ? 'zh-CN' : 'en',
+  messages: SET === shop ? undefined : SAGA.messages(LANG),
 }
-// 路径回放、看变化是插件：不装就只是一张 3D 图
-const PLUGINS = [pathPlugin(), diffPlugin()] as const
+// 路径回放、看变化、映射审计是插件：不装就只是一张 3D 图
+const PLUGINS = [pathPlugin(), diffPlugin(), auditPlugin()] as const
 
 export function App() {
   const [kit, setKit] = useState<Engine | null>(null)
@@ -54,15 +66,15 @@ export function App() {
     return [base, diffAfter(base, LANG)] as const
   }, [data])
 
-  const onReady = useCallback((e: Strata, [p, d]: [PathApi, DiffApi]) => {
-    setKit({ strata: e, path: p, diff: d })
+  const onReady = useCallback((e: Strata, [p, d, a]: [PathApi, DiffApi, AuditApi]) => {
+    setKit({ strata: e, path: p, diff: d, audit: a })
     // 看变化时展开、收起会重新比一遍：差异换成新的
     const offEnter = d.on('enter', setDiff)
     const offExit = d.on('exit', () => setDiff(null))
     // 开发时：控制台里能拿到引擎和两个插件；也能用 strata-debug 事件在页面里求值（s 引擎、p 路径、d 变化），结果写到 body 的 data-debug 上
     let offDebug = () => {}
     if (import.meta.env.DEV) {
-      Object.assign(window as unknown as Record<string, unknown>, { strata: e, strataPath: p, strataDiff: d })
+      Object.assign(window as unknown as Record<string, unknown>, { strata: e, strataPath: p, strataDiff: d, strataAudit: a })
       const onDebug = (ev: Event) => {
         try {
           document.body.dataset.debug = JSON.stringify(new Function('s', 'p', 'd', String((ev as CustomEvent).detail))(e, p, d))
@@ -85,6 +97,13 @@ export function App() {
   const setMode = async (m: Mode) => {
     if (!kit || m === mode) return
     setModeState(m)
+    if (mode === 'audit') kit.audit.exit()
+    if (m === 'audit') {
+      kit.path.clear()
+      kit.diff.exit()
+      kit.audit.show(SET === shop ? undefined : SAGA.AUDIT)
+      return
+    }
     if (m === 'diff') {
       kit.path.clear()
       const d = await kit.diff.show(versions[0], versions[1], { replaces: DIFF_REPLACES })
@@ -130,6 +149,7 @@ export function App() {
               ['panorama', ZH ? '全景' : 'Overview'],
               ['path', ZH ? '路径' : 'Paths'],
               ['diff', ZH ? '变化' : 'Changes'],
+              ['audit', ZH ? '审计' : 'Audit'],
             ] as const
           ).map(([m, word]) => (
             <button key={m} role="tab" aria-selected={mode === m} onClick={() => setMode(m)}>
@@ -164,6 +184,12 @@ export function App() {
         {mode === 'path' && (
           <aside className="side kgs-panel">
             <PathList paths={ALL_PATHS} />
+          </aside>
+        )}
+
+        {mode === 'audit' && (
+          <aside className="side kgs-panel">
+            <AuditPanel />
           </aside>
         )}
 

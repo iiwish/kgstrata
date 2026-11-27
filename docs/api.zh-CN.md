@@ -18,7 +18,7 @@ constructor(host: HTMLElement, options?: StrataOptions)
 
 拿不到 WebGL 上下文时抛 `StrataError`，`code: 'webgl-unavailable'`。这时页面上什么都没挂，原来的错误在 `cause` 上。
 
-`options` 只读一次。`locale`、`messages`、`theme` 有 setter（`setLocale`、`setTheme`）。没有 setter 的选项（`nodeStyles`、`anchor`、`layout`、`secondaryScale`）要改，就销毁实例重建一个。
+`options` 只读一次。`locale`、`messages`、`theme`、`labels` 有 setter（`setLocale`、`setTheme`、`setLabels`）。没有 setter 的选项（`nodeStyles`、`anchor`、`layout`、`secondaryScale`）要改，就销毁实例重建一个。
 
 ## `StrataOptions`
 
@@ -32,12 +32,47 @@ constructor(host: HTMLElement, options?: StrataOptions)
 | `layout` | `LayoutProvider` | — | 注入算好的布局，见[注入布局](#注入布局)。 |
 | `hidden` | `string[]` | `[]` | 一开始就隐藏的层。 |
 | `expanded` | `string[]` | `[]` | 一开始就展开的节点（子节点画出来）。 |
+| `labels` | `LabelOptions` | 处处 `auto` | 哪些名字出：一个缺省的模式，按层、按节点类型、按节点的覆盖，和一屏的上限。之后用 `setLabels` 换。见[名字](#名字)。 |
 | `nodeStyles` | `Record<string, NodeStyle>` | 内置的几种 | 节点的 `type` → `{ shape?, mono?, childNoun? }`，盖在 `DEFAULT_NODE_STYLES` 上。见 [data.zh-CN.md](data.zh-CN.md#节点nodespec)。 |
 | `locale` | `Locale`（`string`） | `'en'` | 问题描述、报错、面板和插件文字的语言。内置 `'en'`、`'zh-CN'`，别的先 `registerLocale`。code 不变。之后用 `setLocale` 换。 |
 | `messages` | `Partial<Record<MessageKey, string>>` | — | 按实例覆盖个别文案，不管现在是什么语言。见 [theming-and-i18n.zh-CN.md](theming-and-i18n.zh-CN.md)。 |
 | `theme` | `DeepPartial<Theme>` | `DARK` | 盖在夜景主题上的覆盖项，只对这个实例。之后用 `setTheme` 换。见 [theming-and-i18n.zh-CN.md](theming-and-i18n.zh-CN.md)。 |
 
 “主角”只在至少两层时才有。只有一层时没有主角，`setHero`、`setHeroMix` 不起作用（照样返回现在的 `HeroInfo`，`id` 是 `null`）。
+
+### 名字
+
+```ts
+type LabelMode = 'auto' | 'always' | 'hover'
+interface LabelOptions {
+  mode?: LabelMode                    // 缺省 'auto'
+  layers?: Record<string, LabelMode>  // 层的 id → 模式
+  types?: Record<string, LabelMode>   // 节点的 type → 模式
+  nodes?: Record<string, LabelMode>   // 节点的 id → 模式
+  max?: number                        // 一屏最多几个名字，缺省 160
+}
+```
+
+各个模式平时出哪些名字（指着一个节点时，它和邻居的名字总是出）：
+
+| 模式 | 主角层 | 配角层 |
+|---|---|---|
+| `auto` | 每层按重要度排前 40 到 60 个的名字（这层的六成，至少 40 个，至多 60 个左右）；不超过 40 个节点的层名字全出。只有一层时聚焦它，它的名字全出。 | 排前 8 个的和枢纽留着，淡一点，其余的淡出。离主角两层以上：都不出。 |
+| `always` | 总是出。 | 总是出，淡一点。 |
+| `hover` | 只在指着它或它的邻居时出（聚焦的层也一样）。 | 同左。 |
+
+越具体的越优先：`nodes`，再 `types`，再 `layers`，最后 `mode`。不认得的值当没写。重要度是 `NodeSpec.weight`，没写就按同层里的连接数排名。屏幕上会压住的名字仍然互相避让，重要的先占位（`always` 的最先），最多画 `max` 个。展开出来的子节点（字段）按同样的规则；`auto` 下父节点展开着名字就出。自己画名字的插件模式（看变化、审计）照它们自己的规则。
+
+```ts
+new Strata(host, {
+  labels: {
+    layers: { catalog: 'always' },     // 小小的目录层：名字全出，当配角时也出
+    types: { field: 'hover' },         // 字段名只在悬停时出
+    nodes: { 'onto:company': 'always' },
+  },
+})
+strata.setLabels({ mode: 'always', max: 300 })
+```
 
 ## 属性
 
@@ -46,6 +81,7 @@ constructor(host: HTMLElement, options?: StrataOptions)
 | `locale` | `Locale`（getter） | 这个实例现在的语言。 |
 | `messages` | `Partial<Record<MessageKey, string>>`（getter） | 按实例覆盖的文案。 |
 | `theme` | `Theme`（getter） | 合并后的主题（`createTheme(options.theme)`，或者最后一次 `setTheme` 的）。 |
+| `labels` | `LabelOptions`（getter） | 名字的规则（`options.labels`，或者最后一次 `setLabels` 的）。给的是拷贝。 |
 | `reducedMotion` | `boolean`（只读） | 创建时系统是否开着“减少动态效果”。开着时不自转，路径回放直接显示全程。 |
 | `data` | `StrataData \| null`（getter） | 最后一次交给 `setData` 的对象，原样。 |
 | `mode` | `string \| null`（getter） | 正在接管画面的模式属于哪个插件（对比时是 `'diff'`），没有是 `null`。 |
@@ -120,13 +156,14 @@ interface ShotOptions { layer?: string; duration?: number }
 interface Inset { top?: number; right?: number; bottom?: number; left?: number }
 ```
 
-### 语言和主题
+### 语言、主题和名字
 
 | 方法 | 返回 | 含义 |
 |---|---|---|
 | `setLocale(locale: Locale, messages?)` | `void` | 换语言；给了 `messages` 连文案覆盖一起换。之后的问题描述、报错、悬停提示的名词、React 面板跟着换。发 `locale`。看变化插件没指定语言时按新语言重新比一遍。已经返回过的问题不会改。 |
 | `text(key: MessageKey, vars?)` | `string` | 按实例的语言和覆盖取一条字。 |
 | `setTheme(overrides: DeepPartial<Theme>)` | `void` | 换主题。`overrides` 和选项一样盖在 `DARK` 上（`setTheme({})` 就回到 `DARK`）。重建清屏色、背景、盘面、标签图集、节点和线的颜色（组的颜色按新色板重取）。布局、选中、隐藏的层、展开的节点、镜头都不动。插件的 `onChange` 收到 `'theme'`；发 `theme`。 |
+| `setLabels(labels: LabelOptions)` | `void` | 换名字的规则（`setLabels({})` 回到处处 `auto`）。下一帧生效；布局、选中、镜头都不动。见[名字](#名字)。 |
 
 ### 视图状态
 
@@ -173,7 +210,7 @@ strata.setView({ hidden: ['onto'], selected: 'tbl:company' })
 
 恢复 `selected` 照样发 `select`（`source: 'api'`），但**不**跟随、不动镜头：这是恢复状态，不是用户在问某个节点。
 
-路径插件会加一项 `path`，看变化插件会加一项 `diff`（见 [plugins.zh-CN.md](plugins.zh-CN.md)）。插件的项不能和上面核心的项重名。
+路径插件会加一项 `path`，看变化插件会加一项 `diff`，审计插件会加一项 `audit`（见 [plugins.zh-CN.md](plugins.zh-CN.md)）。插件的项不能和上面核心的项重名。
 
 ## 事件
 
@@ -215,7 +252,7 @@ interface SelectInfo {
 }
 ```
 
-插件的事件在插件自己的接口上（`path.on('step')`、`diff.on('enter' | 'exit')`）。
+插件的事件在插件自己的接口上（`path.on('step')`、`diff.on('enter' | 'exit')`、`audit.on('enter' | 'exit' | 'select')`）。
 
 ## 镜头
 
@@ -266,6 +303,6 @@ strata.setData(data)
 
 ## `kgstrata` 的其他导出
 
-除了 `Strata`，核心入口还导出插件契约（`Emitter`、`StrataPlugin`、`StrataContext`、`StrataOverlay`、`StrataMode`、`ModeHandle`、`FrameInfo`、`PlatePoint`、`StrataChange`、`StrataEvents`、`ViewSlot`、`Spotlight`），类型 `HeroInfo`、`HoverInfo`、`NodeInfo`、`SelectInfo`、`SelectSource`、`LayerInfo`、`LayoutProvider`、`ShotName`、`ShotOptions`、`Inset`、`PointerPosition`、`StrataOptions`、`StrataView`、`FitOptions`，以及 [`kgstrata/headless`](headless.zh-CN.md) 的全部。
+除了 `Strata`，核心入口还导出插件契约（`Emitter`、`StrataPlugin`、`StrataContext`、`StrataOverlay`、`StrataMode`、`ModeHandle`、`FrameInfo`、`PlatePoint`、`StrataChange`、`StrataEvents`、`ViewSlot`、`Spotlight`），类型 `HeroInfo`、`HoverInfo`、`NodeInfo`、`SelectInfo`、`SelectSource`、`LayerInfo`、`LayoutProvider`、`ShotName`、`ShotOptions`、`Inset`、`PointerPosition`、`StrataOptions`、`StrataView`、`FitOptions`、`LabelOptions`、`LabelMode`，以及 [`kgstrata/headless`](headless.zh-CN.md) 的全部。
 
 模型、样式、渲染器、每帧画的样子（`Looks`、`NodeLook`、`EdgeLook`、`BaseNode`……）不从这里导出：它们在 `kgstrata/internals`，给接管画面的插件用，**不受 semver 保护**（见 [plugins.zh-CN.md](plugins.zh-CN.md#kgstratainternals)）。

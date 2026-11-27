@@ -327,6 +327,11 @@ function install(ctx: StrataContext, options: DiffOptions): DiffApi {
       request++
       drop()
     }
+    // 别的插件的模式接管了：还没回来的 show 作废，不然它回来时会把画面抢回去（接管着的那次由 released 处理）
+    if (change === 'mode' && ctx.mode !== null && ctx.mode !== 'diff') {
+      request++
+      input = null
+    }
     // 换了主题：两版的模型、kgdiff 的配色都按新主题重来
     if (change === 'theme') again()
   })

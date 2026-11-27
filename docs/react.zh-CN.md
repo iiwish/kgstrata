@@ -208,6 +208,30 @@ const PLUGINS = [diffPlugin()] as const
 
 `changesByLayer(diff)` 按层的 id 数变化（每处变化算在 `DiffHunk.layer`，它的节点大多所在的那层）；交给 `<LayerList badges>`，隐藏的层就会显示它藏着几处变化。
 
+### `<AuditPanel>`（`kgstrata/react/audit`）
+
+先是两行总数（走得通的关系、有关系直接对应的外键），再按缺口分组：走不通的关系、没映射的上层节点、上层里没有对应的下层节点、没用到的外键、只被路径用到的外键。每组标数目和颜色，每一条写着为什么是缺口。点一条就在图上选中它、镜头框住，再点一次放开。没在审计时不渲染。
+
+```tsx
+import { auditPlugin } from 'kgstrata/audit'
+import { AuditPanel } from 'kgstrata/react/audit'
+
+const PLUGINS = [auditPlugin()] as const
+
+<StrataCanvas data={data} plugins={PLUGINS} onReady={(_, [audit]) => void audit.show()}>
+  <aside className="kgs-panel"><AuditPanel /></aside>
+</StrataCanvas>
+```
+
+| Prop | 类型 | 含义 |
+|---|---|---|
+| `audit` | `AuditApi \| null` | 插件的接口。缺省：上下文里名为 `'audit'` 的插件。 |
+| `colors` | `Partial<{ gap, weak }>` | 换缺口的颜色。缺省是 `auditColors(strata.theme)`。 |
+| `limit` | `number` | 每组先列多少条，多出来的显示成“还有 N 条”。缺省 40。 |
+| `current` | `MappingAudit \| null` | 直接给审计结果（SSR、测试）。 |
+
+节点的名字取自 `strata.data`。`auditItems(audit, label?, t?)` 把同样的条目当数据返回（`{ group, target, title, detail? }`，按显示的顺序），自己写面板时用。
+
 ## 样式
 
 `import 'kgstrata/react/styles.css'` 是可选的，不引入时面板就是没有样式的结构。样式表不管位置。`.kgs-panel` 是一块毛玻璃底子，可以套在面板外面。`.kgs-canvas` 的缺省规则由组件自己带（见上），不在这个样式表里。

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 打包器验收（先跑 pnpm build）：把打出来的包装进临时目录里的几个最小项目，各用一种打包器构建，
-// 核心、路径、headless、看变化（kgdiff 的三个 .wasm）都走一遍。要联网装包，比较慢，不进 CI；发版前跑。
+// 核心、路径、审计、headless、看变化（kgdiff 的三个 .wasm）都走一遍。要联网装包，比较慢，不进 CI；发版前跑。
 //
 // 两步：
 // 1. 构建：每个项目 pnpm install（严格模式，和用户用 pnpm 时一样）、构建，检查产物里有没有 kgdiff 的三个 .wasm。
@@ -70,9 +70,10 @@ export const after = {
 }
 `
 
-const RUN = `// 核心、路径、headless、看变化都走一遍；结果写到 body 的 data-result 上
+const RUN = `// 核心、路径、审计、headless、看变化都走一遍；结果写到 body 的 data-result 上
 import { Strata } from 'kgstrata'
 import { pathPlugin } from 'kgstrata/path'
+import { auditPlugin } from 'kgstrata/audit'
 import { validate } from 'kgstrata/headless'
 import { diffPlugin } from 'kgstrata/diff'
 import { after, before } from './data.js'
@@ -84,10 +85,13 @@ export async function run(diffOptions) {
     if (errors.length) throw new Error('validate: ' + errors.map((i) => i.code).join(','))
     const strata = new Strata(document.getElementById('app'), { hero: 'onto' })
     const path = strata.use(pathPlugin())
+    const audit = strata.use(auditPlugin())
     const diff = strata.use(diffPlugin(diffOptions))
     strata.setData(after)
     path.play(['onto:investment', 'tbl:shareholder'])
     path.clear()
+    if (!audit.show()) throw new Error('audit.show returned null')
+    audit.exit()
     const result = await diff.show(before, after)
     if (!result) throw new Error('show returned null')
     out.result = 'ok ' + result.hunks.length + ' changes'

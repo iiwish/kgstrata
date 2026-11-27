@@ -13,7 +13,7 @@ npm install kgstrata three
 
 `three` 是 peer 依赖，范围是 `>=0.154.0 <0.200.0`：0.154 到 0.187 实际跑过（0.153 着色器报错）。`d3-force` 是普通依赖，会自动装上。
 
-核心、`kgstrata/path`、`kgstrata/headless`、`kgstrata/react` 只要这两个包，里面都不加载 WebAssembly。一个最小页面（[原生示例](../examples/vanilla)）连 three.js 打包约 686 kB，gzip 后约 180 kB。
+核心、`kgstrata/path`、`kgstrata/audit`、`kgstrata/headless`、`kgstrata/react`（连同 `react/path`、`react/audit`）只要这两个包，里面都不加载 WebAssembly。一个最小页面（[原生示例](../examples/vanilla)）连 three.js 打包约 686 kB，gzip 后约 180 kB。
 
 按需再装：
 
@@ -98,7 +98,7 @@ import.meta.hot?.dispose(() => strata.dispose())
 
 ## 打包工具
 
-核心的几个入口（`kgstrata`、`/path`、`/headless`、`/react`……）是普通的 ESM，下面这些打包工具都不用配置。看变化的入口带着 kgdiff，它用 `new URL('…', import.meta.url)` 找自己的三个 `.wasm` 文件，各打包工具的差别就在这里。表里是用打好的 kgstrata 0.2.0 包和 kgdiff 0.12.3 实测的结果，每种构建都在浏览器里跑过（Vite 6、8 也跑了开发服务器，Next.js 也跑了服务端渲染）。在仓库里用 `pnpm check:bundlers --serve` 可以重跑构建和浏览器里的验收：
+核心的几个入口（`kgstrata`、`/path`、`/headless`、`/react`……）是普通的 ESM，下面这些打包工具都不用配置。看变化的入口带着 kgdiff，它用 `new URL('…', import.meta.url)` 找自己的三个 `.wasm` 文件，各打包工具的差别就在这里。表里是用打好的 kgstrata 0.3.0 包和 kgdiff 0.12.3 实测的结果，每种构建都在浏览器里跑过（Vite 6、8 也跑了开发服务器，Next.js 也跑了服务端渲染）。在仓库里用 `pnpm check:bundlers --serve` 可以重跑构建和浏览器里的验收：
 
 | 打包工具 | 核心 | `kgstrata/diff` |
 |---|---|---|

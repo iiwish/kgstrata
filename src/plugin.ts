@@ -56,7 +56,7 @@ export interface StrataMode {
   hover?(i: number): void
   /** Node `i` was clicked (`-1` = empty space). */
   select?(i: number): void
-  /** The core took the frame back: new data, or another plugin's mode took over. Not called when the plugin releases it itself. */
+  /** The core took the frame back: new data, another plugin's mode took over, or the instance is being disposed. Not called when the plugin releases it itself. */
   released?(): void
 }
 
@@ -141,6 +141,8 @@ export interface StrataEvents {
  * the matching events itself (taking over and releasing already emit `hover(null)`).
  */
 export interface StrataContext {
+  /** The object last passed to `setData`, as given (`strata.data`); `null` before. */
+  readonly data: StrataData | null
   /** The normal view's model; `null` before `setData`. Unchanged while a mode has taken over. */
   readonly model: Model | null
   /** The model drawn now: the mode's while one has taken over, otherwise `model`. */

@@ -6,7 +6,7 @@
 
 每一层都是一张图，有自己的关系；层和层之间是多对多的映射（本体落在哪些表上）。画在一个平面上，三种线只能挤在一起。kgstrata 让每张图占一个平面，层内的关系留在平面里，映射走第三个方向。表摆在它所映射的本体下方：对得上的映射互不交叉，对不上的自己显出来。层可以更多（上面加指标，下面加看板），做法一样。
 
-[![效果页：指标层、当主角的本体层、下面的物理表](docs/images/panorama.zh-CN.png)](https://iiwish.github.io/kgstrata/?lang=zh)
+[![效果页：上面的战役、当主角的势力层、下面的人物](docs/images/panorama.zh-CN.png)](https://iiwish.github.io/kgstrata/?lang=zh)
 
 > **状态：早期版本（0.x）。** 小版本之间接口还可能变，见 [CHANGELOG.md](CHANGELOG.md)。
 
@@ -18,7 +18,8 @@
 - **包含关系。** 节点可以包含子节点（表包含字段）。子节点平时收起，它们的关系上卷到父节点、分量相加；双击展开。
 - **路径回放**（插件）。一个问题先在本体上走，再落到表上，一步一步点亮。
 - **两版对比**（插件）。用 [kgdiff](https://github.com/iiwish/kgdiff) 算两版之间的语义变化：新增、删除、改名、合并、映射调整，可以回放。
-- **React 组件。** `<StrataCanvas>`、hooks 和面板（层列表、主次滑杆、路径列表、变化面板）。
+- **映射审计**（插件）。哪些本体关系在外键上走不通、哪些外键在本体里没有对应、哪些节点没有映射：缺口标在图上，也列在面板里。
+- **React 组件。** `<StrataCanvas>`、hooks 和面板（层列表、主次滑杆、路径列表、变化面板、审计面板）。
 - **语言和主题按实例配。** 英文和简体中文；主题的每个颜色都能改。
 - **不带渲染的入口。** 校验、布局、穿透计算不需要 three.js，能在 Node、Worker 里跑。
 - **视图状态都用 id。** `strata.view` / `setView()` 可以存成 JSON、放进地址里。
@@ -105,6 +106,16 @@ diff.exit()
 
 Vite 8、webpack 5、Next.js 16 不用配置。Vite 6（开发服务器）、Rollup、esbuild、Parcel 2 各要几行配置，见[打包工具](docs/getting-started.zh-CN.md#打包工具)。
 
+**映射审计**（`kgstrata/audit`，不用多装）：哪些本体关系在外键上走不通、哪些外键没有对应、哪些节点没有映射，画在图上。
+
+```ts
+import { auditPlugin } from 'kgstrata/audit'
+
+const audit = strata.use(auditPlugin())
+const result = audit.show() // 也可以只要 JSON：kgstrata/headless 的 auditMappings
+audit.select({ kind: 'relation', id: result!.relations[0].id })
+```
+
 **不带渲染**（`kgstrata/headless`，运行时不需要 three.js）：
 
 ```ts
@@ -133,10 +144,10 @@ const layout = layoutStrata(resolve(data).resolved) // 位置、对应块、映�
 | [上手](docs/getting-started.zh-CN.md) | 安装、最小页面、容器尺寸、销毁、常见问题 |
 | [数据契约](docs/data.zh-CN.md) | 层、节点、关系、分组、包含、全部校验问题码 |
 | [API](docs/api.zh-CN.md) | `Strata` 的成员、选项、视图状态、事件、镜头 |
-| [插件](docs/plugins.zh-CN.md) | 路径回放、两版对比、自己写插件 |
+| [插件](docs/plugins.zh-CN.md) | 路径回放、两版对比、映射审计、自己写插件 |
 | [React](docs/react.zh-CN.md) | `<StrataCanvas>`、hooks、面板、CSS 变量、SSR |
 | [主题和语言](docs/theming-and-i18n.zh-CN.md) | `locale`、`setLocale`、登记一种语言、`setTheme`、主题的每一项 |
-| [不带渲染](docs/headless.zh-CN.md) | 不渲染时的校验、布局、穿透计算 |
+| [不带渲染](docs/headless.zh-CN.md) | 不渲染时的校验、布局、映射审计、穿透计算 |
 | [设计](docs/design.zh-CN.md) | 对齐、构图、视觉背后的规则 |
 | [示例](examples) | 能直接跑的原生、React、两版对比、自定义插件示例 |
 
@@ -147,11 +158,13 @@ const layout = layoutStrata(resolve(data).resolved) // 位置、对应块、映�
 | `kgstrata` | `Strata`、插件契约、`headless` 的全部 | `three` |
 | `kgstrata/path` | `pathPlugin()` | `three` |
 | `kgstrata/diff` | `diffPlugin()`、kgdiff 适配 | `three`、`@kgdiff/*` |
-| `kgstrata/headless` | 校验、整理、布局、多层比例、穿透、类型 | — |
+| `kgstrata/audit` | `auditPlugin()` | `three` |
+| `kgstrata/headless` | 校验、整理、布局、映射审计、多层比例、穿透、类型 | — |
 | `kgstrata/internals` | 给接管模式的插件用的模型、样式、渲染器类型（**不受 semver 保护**） | `three` |
 | `kgstrata/react` | `<StrataCanvas>`、hooks、面板 | `three`、`react` |
 | `kgstrata/react/path` | `<PathList>` | `three`、`react` |
 | `kgstrata/react/diff` | `<DiffPanel>` | `three`、`react`、`@kgdiff/*` |
+| `kgstrata/react/audit` | `<AuditPanel>` | `three`、`react` |
 | `kgstrata/react/styles.css` | 可选的面板样式 | — |
 
 ## 浏览器支持和现状
@@ -162,14 +175,13 @@ const layout = layoutStrata(resolve(data).resolved) // 位置、对应块、映�
 
 还没做的：
 
-- 缺口审计：本体上哪些关系在物理层走不通，哪些外键在本体上没有对应的关系。
 - 路径的上下对照：上面是本体路径，下面是对应的 join 路径。
 - 浅色主题。现在只有夜景主题，但每个颜色都能改。
 - 字段展开后的样子是第一版：围着表的一小圈，字段多时挤，名字互相挡。
 
 ## 参与
 
-效果页在线地址：<https://iiwish.github.io/kgstrata/>（用 `main` 上的代码构建）。想在本地跑：克隆仓库，`pnpm install && pnpm dev`（http://localhost:5207；`?layers=2`、`?layers=4`、`?stress=3000` 换数据；演示数据是一家虚构的网上商城，`?lang=zh` / `?lang=en` 切换中英文）。环境、模块边界、怎么加语言、怎么跑示例见 [CONTRIBUTING.md](CONTRIBUTING.md)。改动记在 [CHANGELOG.md](CHANGELOG.md)。
+效果页在线地址：<https://iiwish.github.io/kgstrata/>（用 `main` 上的代码构建）。想在本地跑：克隆仓库，`pnpm install && pnpm dev`（http://localhost:5207；`?layers=2`、`?layers=4`、`?stress=3000` 换数据；演示数据中文界面是三国，英文界面是特洛伊战争，从上到下都是事件、阵营、人物：阵营之间的联盟和敌对是一张图，人物之间的关系是一张图，谁效力于哪一方是映射，家族收着成员；“变化”对比的是正史和《三国演义》、荷马史诗和电影《特洛伊》。`?data=threekingdoms`、`?data=troy` 指定其中一份，`?data=shop` 换成一家虚构的网上商城（本体和物理表，上面叠指标和看板），`?lang=zh` / `?lang=en` 切换中英文）。环境、模块边界、怎么加语言、怎么跑示例见 [CONTRIBUTING.md](CONTRIBUTING.md)。改动记在 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 许可
 

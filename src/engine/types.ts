@@ -3,7 +3,7 @@
 
 import type { Locale, MessageOverrides } from '../locale.js'
 import type { DeepPartial, Theme } from '../theme.js'
-import type { LayoutOptions, NodeStyle, Resolved, StrataLayout } from '../types.js'
+import type { LabelOptions, LayoutOptions, NodeStyle, Resolved, StrataLayout } from '../types.js'
 
 /** The core camera shots. Shots that frame something else (a path, one change) belong to their plugins (`ctx.fit`). */
 export type ShotName = 'overview' | 'top' | 'layer'
@@ -68,6 +68,11 @@ export interface StrataOptions {
    * brightness, `0` a supporting layer; `0.5` on two layers makes them the same size. Layers not listed count as 0.
    */
   heroMix?: Record<string, number>
+  /**
+   * Which names are drawn at rest: a default mode and overrides per layer, node type and node, plus a
+   * limit per screen (see `LabelOptions`). Default: `auto` everywhere. Change it later with `setLabels`.
+   */
+  labels?: LabelOptions
   /** Node `type` → how it is drawn (shape, monospace label, child noun). Merged over `DEFAULT_NODE_STYLES`. */
   nodeStyles?: Record<string, NodeStyle>
   /**

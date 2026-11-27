@@ -6,7 +6,7 @@
 
 Each layer is a graph with its own relations, and the layers are linked by a many-to-many mapping (which tables each concept lands on). A flat drawing has to mix three kinds of lines in one plane. kgstrata gives each graph its own plane, keeps in-layer relations inside it, and runs the mappings through the third dimension. Tables are placed below the concepts they map to, so mappings that line up do not cross, and the ones that do not line up stand out. More layers (metrics above, dashboards below) work the same way.
 
-[![The demo page: a metrics layer, the ontology layer as the hero, and the tables below](docs/images/panorama.png)](https://iiwish.github.io/kgstrata/?lang=en)
+[![The demo page: events on top, the sides layer as the hero, and the figures below](docs/images/panorama.png)](https://iiwish.github.io/kgstrata/?lang=en)
 
 > **Status: early (0.x).** The API may still change between minor versions; see [CHANGELOG.md](CHANGELOG.md).
 
@@ -18,7 +18,8 @@ Each layer is a graph with its own relations, and the layers are linked by a man
 - **Containment.** Nodes contain children (tables contain fields). Children are folded by default and their relations roll up to the parent with summed weights; double-click to expand.
 - **Path replay** (plugin). A question walks through the ontology and down into the tables, step by step.
 - **Version comparison** (plugin). Semantic diff of two versions with [kgdiff](https://github.com/iiwish/kgdiff): added, removed, renamed, merged, re-mapped. Replayable.
-- **React components.** `<StrataCanvas>`, hooks and panels (layer list, hero slider, path list, diff panel).
+- **Mapping audit** (plugin). Which ontology relations cannot be walked through foreign keys, which foreign keys the ontology does not account for, which nodes have no mapping: gaps marked on the map and listed in a panel.
+- **React components.** `<StrataCanvas>`, hooks and panels (layer list, hero slider, path list, diff panel, audit panel).
 - **Per-instance language and theme.** English and Simplified Chinese; every theme colour can be overridden.
 - **Headless entry.** Validation, layout and bridge computation without three.js, for Node or Workers.
 - **View state by id.** `strata.view` / `setView()` round-trip through JSON, URLs included.
@@ -105,6 +106,16 @@ diff.exit()
 
 Vite 8, webpack 5 and Next.js 16 need no configuration. Vite 6 (dev server), Rollup, esbuild and Parcel 2 need a few lines each; see [Bundlers](docs/getting-started.md#bundlers).
 
+**Mapping audit** (`kgstrata/audit`, nothing extra to install): which ontology relations cannot be walked through foreign keys, which foreign keys nothing accounts for, which nodes have no mapping, drawn on the map.
+
+```ts
+import { auditPlugin } from 'kgstrata/audit'
+
+const audit = strata.use(auditPlugin())
+const result = audit.show() // also as plain JSON: auditMappings in kgstrata/headless
+audit.select({ kind: 'relation', id: result!.relations[0].id })
+```
+
 **Headless** (`kgstrata/headless`, no three.js needed at runtime):
 
 ```ts
@@ -133,10 +144,10 @@ Full reference: [docs/data.md](docs/data.md).
 | [Getting started](docs/getting-started.md) | Install, minimal page, sizing, cleanup, common problems |
 | [Data contract](docs/data.md) | Layers, nodes, relations, groupings, containment, all validation codes |
 | [API](docs/api.md) | `Strata` members, options, view state, events, camera shots |
-| [Plugins](docs/plugins.md) | Path replay, version comparison, writing your own plugin |
+| [Plugins](docs/plugins.md) | Path replay, version comparison, mapping audit, writing your own plugin |
 | [React](docs/react.md) | `<StrataCanvas>`, hooks, panels, CSS variables, SSR |
 | [Theming and languages](docs/theming-and-i18n.md) | `locale`, `setLocale`, registering a language, `setTheme`, every theme field |
-| [Headless](docs/headless.md) | Validation, layout and bridges without rendering |
+| [Headless](docs/headless.md) | Validation, layout, mapping audit and bridges without rendering |
 | [Design](docs/design.md) | The rules behind alignment, composition and visuals |
 | [Examples](examples) | Runnable vanilla, React, diff and custom-plugin examples |
 
@@ -147,11 +158,13 @@ Full reference: [docs/data.md](docs/data.md).
 | `kgstrata` | `Strata`, plugin contract, everything in `headless` | `three` |
 | `kgstrata/path` | `pathPlugin()` | `three` |
 | `kgstrata/diff` | `diffPlugin()`, kgdiff adapter | `three`, `@kgdiff/*` |
-| `kgstrata/headless` | validate, normalize, layout, proportions, bridges, types | — |
+| `kgstrata/audit` | `auditPlugin()` | `three` |
+| `kgstrata/headless` | validate, normalize, layout, mapping audit, proportions, bridges, types | — |
 | `kgstrata/internals` | model, styler, renderer types for take-over plugins (**not covered by semver**) | `three` |
 | `kgstrata/react` | `<StrataCanvas>`, hooks, panels | `three`, `react` |
 | `kgstrata/react/path` | `<PathList>` | `three`, `react` |
 | `kgstrata/react/diff` | `<DiffPanel>` | `three`, `react`, `@kgdiff/*` |
+| `kgstrata/react/audit` | `<AuditPanel>` | `three`, `react` |
 | `kgstrata/react/styles.css` | optional panel styles | — |
 
 ## Browser support and status
@@ -162,14 +175,13 @@ Full reference: [docs/data.md](docs/data.md).
 
 Not done yet:
 
-- Gap audit: which ontology relations cannot be walked in the physical layer, which foreign keys have no ontology relation.
 - Paths side by side: the ontology path above, the matching join path below.
 - A light theme. Only the dark theme exists; all its colours can be overridden.
 - Expanded fields are a first version: a small ring around the table that gets crowded, with overlapping labels, when a table has many fields.
 
 ## Contributing
 
-The demo page is online at <https://iiwish.github.io/kgstrata/> (built from `main`). To run it locally, clone the repository and run `pnpm install && pnpm dev` (http://localhost:5207; `?layers=2`, `?layers=4`, `?stress=3000` change the data; the demo is a made-up online store, `?lang=en` / `?lang=zh` switches it between English and Chinese). See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, module boundaries, adding a language and running the examples. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+The demo page is online at <https://iiwish.github.io/kgstrata/> (built from `main`). To run it locally, clone the repository and run `pnpm install && pnpm dev` (http://localhost:5207; `?layers=2`, `?layers=4`, `?stress=3000` change the data; the English demo is the Trojan War and the Chinese one is the Three Kingdoms, both with events, sides and figures from top to bottom: alliances and wars between sides are one graph, ties between figures are another, who fights for which side is the mapping, and families contain their members; the Changes tab compares Homer with the 2004 film *Troy* (and the official history with the novel *Romance of the Three Kingdoms*). `?data=troy` and `?data=threekingdoms` pick one, `?data=shop` switches to a made-up online store (an ontology and its tables, with metrics and dashboards on top), and `?lang=en` / `?lang=zh` switches between English and Chinese). See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, module boundaries, adding a language and running the examples. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

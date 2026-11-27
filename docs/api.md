@@ -18,7 +18,7 @@ Creates the WebGL canvas inside `host` and starts the animation loop. Nothing is
 
 Throws `StrataError` with `code: 'webgl-unavailable'` if no WebGL context can be created. In that case nothing has been attached to the page; the original error is on `cause`.
 
-`options` is read once. `locale`, `messages` and `theme` have setters (`setLocale`, `setTheme`). To change an option that has no setter (`nodeStyles`, `anchor`, `layout`, `secondaryScale`), dispose the instance and create a new one.
+`options` is read once. `locale`, `messages`, `theme` and `labels` have setters (`setLocale`, `setTheme`, `setLabels`). To change an option that has no setter (`nodeStyles`, `anchor`, `layout`, `secondaryScale`), dispose the instance and create a new one.
 
 ## `StrataOptions`
 
@@ -32,12 +32,47 @@ Throws `StrataError` with `code: 'webgl-unavailable'` if no WebGL context can be
 | `layout` | `LayoutProvider` | — | Inject a precomputed layout. See [Injecting a layout](#injecting-a-layout). |
 | `hidden` | `string[]` | `[]` | Layer ids hidden at start. |
 | `expanded` | `string[]` | `[]` | Node ids expanded at start (their children are drawn). |
+| `labels` | `LabelOptions` | `auto` everywhere | Which names are drawn: a mode, overrides per layer, node type and node, and a limit per screen. `setLabels` changes it later. See [Labels](#labels). |
 | `nodeStyles` | `Record<string, NodeStyle>` | built-ins | Node `type` → `{ shape?, mono?, childNoun? }`. Merged over `DEFAULT_NODE_STYLES`. See [data.md](data.md#nodes-nodespec). |
 | `locale` | `Locale` (`string`) | `'en'` | Language of issue messages, error messages, panel and plugin text. Built in: `'en'`, `'zh-CN'`; others need `registerLocale` first. Codes do not change. `setLocale` changes it later. |
 | `messages` | `Partial<Record<MessageKey, string>>` | — | Overrides single texts for this instance, whatever the language. See [theming-and-i18n.md](theming-and-i18n.md). |
 | `theme` | `DeepPartial<Theme>` | `DARK` | Overrides applied on top of the dark theme for this instance. `setTheme` changes it later. See [theming-and-i18n.md](theming-and-i18n.md). |
 
 "Hero" only applies when there are at least two layers. With one layer there is no hero, and `setHero`, `setHeroMix` do nothing (they still return the current `HeroInfo`, with `id: null`).
+
+### Labels
+
+```ts
+type LabelMode = 'auto' | 'always' | 'hover'
+interface LabelOptions {
+  mode?: LabelMode                    // default 'auto'
+  layers?: Record<string, LabelMode>  // layer id → mode
+  types?: Record<string, LabelMode>   // node type → mode
+  nodes?: Record<string, LabelMode>   // node id → mode
+  max?: number                        // names on screen at most, default 160
+}
+```
+
+What each mode means at rest (pointing at a node always shows its name and its neighbours'):
+
+| Mode | Hero layer | Supporting layers |
+|---|---|---|
+| `auto` | The 40 to 60 most important names of each layer (60 % of the layer, at least 40, at most about 60); a layer of up to 40 nodes shows every name. Focusing a layer (single layer) shows all its names. | The 8 most important names and the hubs, fainter; the rest fade out. Two steps or more away from the hero: none. |
+| `always` | Always. | Always, a little fainter. |
+| `hover` | Only while it or a neighbour is pointed at (also on a focused layer). | Same. |
+
+The most specific rule wins: `nodes`, then `types`, then `layers`, then `mode`. Unknown values count as not given. Importance is `NodeSpec.weight`, or the node's rank by degree in its layer. Names that would overlap on screen still give way to each other, more important first (`always` names go first), and at most `max` are drawn. Expanded children (fields) follow the same rules; under `auto` their names show while their parent is expanded. Plugin modes that draw their own names (comparing, auditing) keep their own rules.
+
+```ts
+new Strata(host, {
+  labels: {
+    layers: { catalog: 'always' },     // a small catalog layer: every name, also as a supporting layer
+    types: { field: 'hover' },         // field names only on hover
+    nodes: { 'onto:company': 'always' },
+  },
+})
+strata.setLabels({ mode: 'always', max: 300 })
+```
 
 ## Properties
 
@@ -46,6 +81,7 @@ Throws `StrataError` with `code: 'webgl-unavailable'` if no WebGL context can be
 | `locale` | `Locale` (getter) | The instance's current language. |
 | `messages` | `Partial<Record<MessageKey, string>>` (getter) | The per-instance text overrides. |
 | `theme` | `Theme` (getter) | The resolved theme (`createTheme(options.theme)`, or the last `setTheme`). |
+| `labels` | `LabelOptions` (getter) | The label rules (`options.labels`, or the last `setLabels`). A copy. |
 | `reducedMotion` | `boolean` (readonly) | `prefers-reduced-motion: reduce` at creation. The idle rotation is off and path replay jumps to the end. |
 | `data` | `StrataData \| null` (getter) | The object last passed to `setData`, as given. |
 | `mode` | `string \| null` (getter) | Name of the plugin whose mode has taken over the frame (`'diff'` while comparing), or `null`. |
@@ -120,13 +156,14 @@ interface ShotOptions { layer?: string; duration?: number }
 interface Inset { top?: number; right?: number; bottom?: number; left?: number }
 ```
 
-### Language and theme
+### Language, theme and labels
 
 | Method | Returns | Meaning |
 |---|---|---|
 | `setLocale(locale: Locale, messages?)` | `void` | Switches the language; with `messages`, also replaces the text overrides. Later issue messages, errors, tooltip nouns and React panels follow. Emits `locale`. The diff plugin re-compares in the new language unless it was given its own `locale`. Issues already returned are not rewritten. |
 | `text(key: MessageKey, vars?)` | `string` | One text in the instance's language, with its overrides. |
 | `setTheme(overrides: DeepPartial<Theme>)` | `void` | Replaces the theme. `overrides` apply on top of `DARK`, like the option (so `setTheme({})` returns to `DARK`). Rebuilds the clear colour, backdrop, plates, label atlas and node and line colours (group colours are re-taken from the new palette). Layout, selection, hidden layers, expanded nodes and camera do not change. Plugins get `onChange('theme')`; emits `theme`. |
+| `setLabels(labels: LabelOptions)` | `void` | Replaces the label rules (`setLabels({})` returns to `auto` everywhere). Takes effect on the next frame; layout, selection and camera do not change. See [Labels](#labels). |
 
 ### View state
 
@@ -173,7 +210,7 @@ strata.setView({ hidden: ['onto'], selected: 'tbl:company' })
 
 Restoring `selected` emits `select` with `source: 'api'`, but does **not** follow the hero or move the camera: it restores state, it is not the user asking about a node.
 
-The path plugin adds `path` and the diff plugin adds `diff` (see [plugins.md](plugins.md)). Plugin keys must not clash with the core keys above.
+The path plugin adds `path`, the diff plugin adds `diff` and the audit plugin adds `audit` (see [plugins.md](plugins.md)). Plugin keys must not clash with the core keys above.
 
 ## Events
 
@@ -215,7 +252,7 @@ interface SelectInfo {
 }
 ```
 
-Plugins have their own events on their own API (`path.on('step')`, `diff.on('enter' | 'exit')`).
+Plugins have their own events on their own API (`path.on('step')`, `diff.on('enter' | 'exit')`, `audit.on('enter' | 'exit' | 'select')`).
 
 ## Shots
 
@@ -266,6 +303,6 @@ strata.setData(data)
 
 ## Other exports of `kgstrata`
 
-Besides `Strata` the core entry exports the plugin contract (`Emitter`, `StrataPlugin`, `StrataContext`, `StrataOverlay`, `StrataMode`, `ModeHandle`, `FrameInfo`, `PlatePoint`, `StrataChange`, `StrataEvents`, `ViewSlot`, `Spotlight`), the types `HeroInfo`, `HoverInfo`, `NodeInfo`, `SelectInfo`, `SelectSource`, `LayerInfo`, `LayoutProvider`, `ShotName`, `ShotOptions`, `Inset`, `PointerPosition`, `StrataOptions`, `StrataView`, `FitOptions`, and everything in [`kgstrata/headless`](headless.md).
+Besides `Strata` the core entry exports the plugin contract (`Emitter`, `StrataPlugin`, `StrataContext`, `StrataOverlay`, `StrataMode`, `ModeHandle`, `FrameInfo`, `PlatePoint`, `StrataChange`, `StrataEvents`, `ViewSlot`, `Spotlight`), the types `HeroInfo`, `HoverInfo`, `NodeInfo`, `SelectInfo`, `SelectSource`, `LayerInfo`, `LayoutProvider`, `ShotName`, `ShotOptions`, `Inset`, `PointerPosition`, `StrataOptions`, `StrataView`, `FitOptions`, `LabelOptions`, `LabelMode`, and everything in [`kgstrata/headless`](headless.md).
 
 It does not export the model, the styler, the renderer or the per-frame render types (`Looks`, `NodeLook`, `EdgeLook`, `BaseNode`, …). Those are in `kgstrata/internals`, for plugins that take over the frame, and are **not covered by semver** (see [plugins.md](plugins.md#kgstratainternals)).

@@ -7,7 +7,7 @@ import type { Emitter, StrataEvents, StrataMode } from '../plugin.js'
 import type { StrataRenderer } from '../renderer/index.js'
 import type { Styler, StyleState } from '../styler.js'
 import type { Theme } from '../theme.js'
-import type { Looks } from '../types.js'
+import type { LabelOptions, Looks } from '../types.js'
 import type { Expansion } from './expansion.js'
 import type { HeroState } from './hero.js'
 import type { HiddenLayers } from './layers.js'
@@ -53,6 +53,10 @@ export interface Core {
   locale: Locale
   messages: MessageOverrides
   theme: Theme
+  /** 哪些名字出（StrataOptions.labels / setLabels），拷过的 */
+  labels: LabelOptions
+  /** 全景落后于展开状态：展开、收起被插件接手了（模式在画），全景没重建。交还时补上 */
+  stale: boolean
 }
 
 /** 现在画的模型：有模式接管时是模式的 */

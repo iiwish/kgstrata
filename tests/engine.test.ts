@@ -6,7 +6,7 @@ import { layoutFromJSON, layoutToJSON } from '../src/layout-io'
 import { registerLocale } from '../src/locale'
 import { resolve } from '../src/resolve'
 import { DARK } from '../src/theme'
-import type { Resolved, StrataLayout } from '../src/types'
+import type { LabelOptions, Resolved, StrataLayout } from '../src/types'
 
 // 引擎本身（选中、镜头、主次、语言、主题、注入的布局）。渲染器要 WebGL：这里换成一个只记账的假渲染器，
 // 引擎的其余部分（整理、布局、模型、样式、事件）都是真的。
@@ -705,5 +705,322 @@ describe('0.2 命名收尾', () => {
     const s = new Strata(host)
     s.use({ name: 'probe', install: (c) => void (ctx = c) })
     expect('emit' in ctx).toBe(false)
+  })
+})
+
+describe('映射审计插件', async () => {
+  const { auditPlugin, auditColors } = await import('../src/audit')
+  const { auditMappings } = await import('../src/headless')
+  const { panorama, layered } = await import('../demo/src/data')
+  type Mode = { model: { index: Map<string, number>; base: { nodes: { id: string; layer: number }[]; edges: { s: number; t: number; kind: string }[] }; edgeId: string[] }; looks(f: { time: number; dt: number }): import('../src/types').Looks; select?(i: number): void }
+  const modeOf = (s: InstanceType<typeof Strata>) => (s as unknown as { core: { active: { mode: Mode } | null } }).core.active?.mode ?? null
+  const frame = (s: InstanceType<typeof Strata>) => modeOf(s)!.looks({ time: 1, dt: 0.016 })
+  const node = (s: InstanceType<typeof Strata>, id: string) => modeOf(s)!.model.index.get(id)!
+  const edge = (s: InstanceType<typeof Strata>, id: string) => modeOf(s)!.model.edgeId.indexOf(id)
+  const C = auditColors('dark')
+
+  const setup = (data = panorama('en')) => {
+    const s = new Strata(host)
+    const audit = s.use(auditPlugin())
+    s.setData(data)
+    return { s, audit, data }
+  }
+
+  it('show 审计 strata 现在的数据、接管画面；exit 交还', () => {
+    const { s, audit, data } = setup()
+    const seen: string[] = []
+    audit.on('enter', () => seen.push('enter'))
+    audit.on('exit', () => seen.push('exit'))
+    calls.length = 0
+    const a = audit.show()!
+    expect(a).toEqual(auditMappings(data))
+    expect(a.maxHops).toBe(3)
+    expect(s.mode).toBe('audit')
+    expect(audit.active).toBe(true)
+    expect(audit.current).toBe(a)
+    expect(calls.filter((c) => c.name === 'setBase')).toHaveLength(1)
+    audit.exit()
+    expect(s.mode).toBeNull()
+    expect(audit.active).toBe(false)
+    expect(audit.current).toBeNull()
+    expect(seen).toEqual(['enter', 'exit'])
+    // 没在审计时 exit、select 什么都不做
+    audit.exit()
+    audit.select({ kind: 'node', id: 'c:order' })
+    expect(seen).toEqual(['enter', 'exit'])
+  })
+
+  it('没有数据时 show 返回 null；层不对照样抛 audit-layers', () => {
+    const s = new Strata(host)
+    const audit = s.use(auditPlugin())
+    expect(audit.show()).toBeNull()
+    s.setData(panorama('en'))
+    expect(() => audit.show({ upper: 'nope' })).toThrow(expect.objectContaining({ code: 'audit-layers' }))
+    expect(s.mode).toBeNull()
+  })
+
+  it('平时：只有缺口带颜色，没缺口的退成灰', () => {
+    const { s, audit } = setup()
+    audit.show()
+    const L = frame(s)
+    expect(L.neutral).toBe(1)
+    // 走不通的本体关系：缺口色的虚线
+    const unreachable = L.edges[edge(s, 'c:customer||c:coupon_claim')]
+    expect([unreachable.colorA, unreachable.dash]).toEqual([C.gap, true])
+    // 完全没用到的外键：缺口色的实线；只被路径用到的：弱一档的颜色
+    const unused = L.edges[edge(s, 'tbl:orders|fk|tbl:dim_date')]
+    expect([unused.colorA, unused.dash]).toEqual([C.gap, false])
+    expect(L.edges[edge(s, 'tbl:reviews|fk|tbl:order_items')].colorA).toBe(C.weak)
+    // 一端没映射的关系不另外标：缺口在节点上
+    expect(L.edges[edge(s, 'c:order||c:invoice')].colorA).not.toBe(C.gap)
+    // 没映射的节点：缺口色的环、出名字；走不通的关系两端出名字；没缺口的节点名字收起
+    const invoice = L.nodes[node(s, 'c:invoice')]
+    expect(invoice.ring?.color).toBe(C.gap)
+    expect(invoice.label!.alpha).toBe(1)
+    expect(L.nodes[node(s, 'c:coupon_claim')].label!.alpha).toBe(1)
+    expect(L.nodes[node(s, 'tbl:dim_region')].ring?.color).toBe(C.gap)
+    const quiet = L.nodes[node(s, 'tbl:wishlists')]
+    expect(quiet.ring).toBeNull()
+    expect(quiet.label!.alpha).toBe(0)
+    // 静止时没有东西泛光
+    expect(Math.max(...L.nodes.map((n) => n.intensity))).toBeLessThanOrEqual(1)
+  })
+
+  it('不在审计的两层里的节点压暗、不出名字', () => {
+    const { s, audit } = setup(layered(3, 'en'))
+    audit.show()
+    const L = frame(s)
+    const m = modeOf(s)!.model
+    const metric = m.base.nodes.findIndex((n) => n.layer === 0)
+    expect(L.nodes[metric].label!.alpha).toBe(0)
+    expect(L.nodes[metric].alpha).toBeLessThan(0.5)
+  })
+
+  it('选中一条走得通的关系：两端、路径上的表和外键亮起来，镜头框住，发 select', () => {
+    const { s, audit } = setup()
+    audit.show()
+    const got: unknown[] = []
+    audit.on('select', (v) => got.push(v))
+    calls.length = 0
+    audit.select({ kind: 'relation', id: 'c:customer||c:favorite' })
+    expect(audit.selected).toEqual({ kind: 'relation', id: 'c:customer||c:favorite' })
+    expect(got).toEqual([{ kind: 'relation', id: 'c:customer||c:favorite' }])
+    expect(calls.some((c) => c.name === 'fit')).toBe(true)
+    const L = frame(s)
+    for (const id of ['c:customer', 'c:favorite', 'tbl:customers', 'tbl:wishlists']) expect(L.nodes[node(s, id)].intensity, id).toBeGreaterThan(1)
+    expect(L.nodes[node(s, 'c:customer')].ring?.color).toBe(DARK.accent)
+    const join = L.edges[edge(s, 'tbl:wishlists|fk|tbl:customers')]
+    expect(join.flow).toBeGreaterThan(0)
+    expect(join.colorA).toBe(DARK.accent)
+    // 别的缺口退一步
+    expect(L.edges[edge(s, 'tbl:orders|fk|tbl:dim_date')].alpha).toBeLessThan(0.5)
+    expect(L.nodes[node(s, 'tbl:dim_date')].intensity).toBeLessThan(1)
+  })
+
+  it('选中只被路径用到的外键：用到它的本体关系一起亮', () => {
+    const { s, audit } = setup()
+    const a = audit.show()!
+    const j = a.joins.find((x) => x.id === 'tbl:reviews|fk|tbl:order_items')!
+    audit.select({ kind: 'join', id: j.id })
+    const L = frame(s)
+    for (const id of j.usedBy) expect(L.edges[edge(s, id)].intensity, id).toBeGreaterThan(1)
+    expect(L.edges[edge(s, j.id)].colorA).toBe(C.weak)
+  })
+
+  it('在图上点节点选中它，再点一次或点空白处放开；未知的项清掉选中，镜头交还', () => {
+    const { s, audit } = setup()
+    audit.show()
+    const mode = modeOf(s)!
+    mode.select!(node(s, 'c:invoice'))
+    expect(audit.selected).toEqual({ kind: 'node', id: 'c:invoice' })
+    expect(frame(s).nodes[node(s, 'c:order')].intensity).toBeGreaterThan(1)
+    mode.select!(node(s, 'c:invoice'))
+    expect(audit.selected).toBeNull()
+    mode.select!(node(s, 'c:invoice'))
+    mode.select!(-1)
+    expect(audit.selected).toBeNull()
+    audit.select({ kind: 'relation', id: 'c:customer||c:favorite' })
+    calls.length = 0
+    audit.select({ kind: 'join', id: 'nope' })
+    expect(audit.selected).toBeNull()
+    expect(calls.filter((c) => c.name === 'frame')).toHaveLength(1)
+  })
+
+  it('选中以后 exit 回到总览；用户动过镜头就不动', () => {
+    const { s, audit } = setup()
+    audit.show()
+    audit.select({ kind: 'node', id: 'c:invoice' })
+    calls.length = 0
+    audit.exit()
+    expect(calls.filter((c) => c.name === 'frame')).toHaveLength(1)
+    audit.show()
+    audit.select({ kind: 'node', id: 'c:invoice' })
+    userMoves(s)
+    calls.length = 0
+    audit.exit()
+    expect(calls.filter((c) => c.name === 'frame')).toHaveLength(0)
+  })
+
+  it('审计按收起来画：审计时展开不改画面，交还时全景按新的展开状态重建', () => {
+    const { s, audit } = setup(small(2))
+    audit.show()
+    const table = small(2).nodes.find((n) => n.parent)!.parent!
+    calls.length = 0
+    s.expand(table)
+    expect(s.expanded).toEqual([table])
+    expect(calls.filter((c) => c.name === 'setBase')).toHaveLength(0)
+    expect(s.mode).toBe('audit')
+    audit.exit()
+    const m = (s as unknown as { core: { model: { index: Map<string, number> } } }).core.model
+    expect([...m.index.keys()].some((id) => small(2).nodes.find((n) => n.id === id)?.parent === table)).toBe(true)
+  })
+
+  it('已经展开着也按收起来审计、画面不带子节点', () => {
+    const data = small(2)
+    const table = data.nodes.find((n) => n.parent)!.parent!
+    const s = new Strata(host)
+    const audit = s.use(auditPlugin())
+    s.setData(data)
+    s.expand(table)
+    audit.show()
+    const kids = data.nodes.filter((n) => n.parent === table).map((n) => n.id)
+    expect(kids.some((id) => modeOf(s)!.model.index.has(id))).toBe(false)
+  })
+
+  it('视图状态带着选中项；换数据就退出；换主题选中项接着用', async () => {
+    const { s, audit } = setup()
+    expect(s.view.audit).toBeNull()
+    audit.show()
+    audit.select({ kind: 'relation', id: 'c:customer||c:coupon_claim' })
+    expect(s.view.audit).toEqual({ selected: { kind: 'relation', id: 'c:customer||c:coupon_claim' } })
+    s.setView({ audit: { selected: { kind: 'node', id: 'c:invoice' } } })
+    expect(audit.selected).toEqual({ kind: 'node', id: 'c:invoice' })
+    const { createTheme } = await import('../src/theme')
+    s.setTheme(createTheme({ diffScheme: 'light' }))
+    expect(audit.active).toBe(true)
+    expect(audit.selected).toEqual({ kind: 'node', id: 'c:invoice' })
+    expect(frame(s).nodes[node(s, 'c:invoice')].ring?.color).toBe(DARK.accent)
+    expect(frame(s).nodes[node(s, 'tbl:dim_region')].ring?.color).toBe(auditColors('light').gap)
+    let exited = false
+    audit.on('exit', () => (exited = true))
+    s.setData(panorama('en'))
+    expect(exited).toBe(true)
+    expect(audit.active).toBe(false)
+  })
+
+  it('别的模式接管时审计退出', async () => {
+    const { diffPlugin } = await import('../src/diff')
+    const { s, audit } = setup(small(2))
+    const diff = s.use(diffPlugin())
+    audit.show()
+    let exited = false
+    audit.on('exit', () => (exited = true))
+    await diff.show(small(2), small(2))
+    expect(s.mode).toBe('diff')
+    expect(exited).toBe(true)
+  })
+})
+
+describe('名字的规则', () => {
+  type Inner = { styler: { resolve(st: unknown): { nodes: { label: { alpha: number } }[] } }; model: { index: Map<string, number> } }
+  const rest = { hover: -1, selected: -1, focusLayer: null, stage: null, spot: null, group: -1, time: 0 }
+  /** 平时（没指着东西、不分主次）这个节点的名字出多少 */
+  const labelOf = (s: InstanceType<typeof Strata>, id: string) => {
+    const c = (s as unknown as { core: Inner }).core
+    return c.styler.resolve(rest).nodes[c.model.index.get(id)!].label.alpha
+  }
+  const limitOf = (s: InstanceType<typeof Strata>) => (s as unknown as { renderer: { labelLimit: number } }).renderer.labelLimit
+
+  it('选项和 setLabels：样式按新规则出名字，上限交给渲染器；getter 给拷贝', () => {
+    const given: LabelOptions = { mode: 'hover', nodes: { 'c:order': 'always' }, max: 12.7 }
+    const s = new Strata(host, { labels: given })
+    s.setData(small(2))
+    expect(limitOf(s)).toBe(12)
+    expect(labelOf(s, 'c:order')).toBe(1)
+    expect(labelOf(s, 'tbl:orders')).toBe(0)
+    // 改调用方给的对象不影响引擎；getter 给的也是拷贝
+    given.nodes!['c:order'] = 'hover'
+    expect(s.labels).toEqual({ mode: 'hover', nodes: { 'c:order': 'always' }, max: 12.7 })
+    s.labels.nodes!['c:order'] = 'hover'
+    expect(labelOf(s, 'c:order')).toBe(1)
+    s.setLabels({ max: -3 })
+    expect(s.labels).toEqual({ max: -3 })
+    expect(limitOf(s)).toBe(160)
+    expect(labelOf(s, 'tbl:orders')).toBe(1)
+    // 展开、换主题重建样式时规则跟着
+    s.setLabels({ layers: { table: 'hover' } })
+    s.setTheme({ accent: '#ffffff' })
+    expect(labelOf(s, 'tbl:orders')).toBe(0)
+    s.expand('tbl:orders')
+    expect(labelOf(s, 'tbl:orders')).toBe(0)
+  })
+
+  it('没有数据时 setLabels 也收下，setData 之后生效', () => {
+    const s = new Strata(host)
+    s.setLabels({ mode: 'hover' })
+    s.setData(small(2))
+    expect(labelOf(s, 'c:order')).toBe(0)
+  })
+})
+
+describe('模式交接', async () => {
+  const { auditPlugin } = await import('../src/audit')
+  const { diffPlugin } = await import('../src/diff')
+  type Inner = { model: { index: Map<string, number> }; active: unknown }
+  const inner = (s: InstanceType<typeof Strata>) => (s as unknown as { core: Inner }).core
+  const setup = () => {
+    const s = new Strata(host)
+    const audit = s.use(auditPlugin())
+    const diff = s.use(diffPlugin())
+    s.setData(small(2))
+    return { s, audit, diff }
+  }
+
+  it('看变化时展开、审计接过去再交还：全景按现在的展开状态重建', async () => {
+    const { s, audit, diff } = setup()
+    await diff.show(small(2), small(2))
+    s.expand('tbl:orders')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(s.mode).toBe('diff')
+    audit.show()
+    audit.exit()
+    expect(s.mode).toBeNull()
+    expect(s.expanded).toEqual(['tbl:orders'])
+    expect(inner(s).model.index.has('fld:orders.id')).toBe(true)
+  })
+
+  it('审计时展开过，换了数据以后再审计、交还：不白白重建，选中留着', () => {
+    const { s, audit } = setup()
+    audit.show()
+    s.expand('tbl:orders')
+    s.setData(small(2))
+    s.select('c:order')
+    audit.show()
+    audit.exit()
+    expect(s.view.selected).toBe('c:order')
+  })
+
+  it('还没回来的 diff.show 不把画面从之后的审计手里抢回去', async () => {
+    const { s, audit, diff } = setup()
+    const p = diff.show(small(2), small(2))
+    audit.show()
+    expect(await p).toBeNull()
+    expect(s.mode).toBe('audit')
+    expect(audit.active).toBe(true)
+    // 之后的展开也不会让看变化重新比、抢回画面
+    s.expand('tbl:orders')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(s.mode).toBe('audit')
+  })
+
+  it('销毁时接管着的模式被收回：插件不再以为自己在接管，发 exit', () => {
+    const { s, audit } = setup()
+    const seen: string[] = []
+    audit.on('exit', () => seen.push('exit'))
+    audit.show()
+    s.dispose()
+    expect(audit.active).toBe(false)
+    expect(s.mode).toBeNull()
+    expect(seen).toEqual(['exit'])
   })
 })

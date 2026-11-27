@@ -5,7 +5,7 @@ import { StrataError, type MessageKey } from '../locale.js'
 import { composeFrame, spotlightOf } from '../pipeline.js'
 import { ViewRegistry, type FrameInfo, type ModeHandle, type StrataChange, type StrataContext, type StrataMode, type StrataOverlay, type StrataPlugin } from '../plugin.js'
 import { normalize } from '../resolve.js'
-import type { Looks } from '../types.js'
+import type { Looks, StrataData } from '../types.js'
 import { currentOf, emit, hiddenOf, indexOf, layerIndex, type Active, type Core } from './core.js'
 import { layoutOf, normalizeOptions, rebuildModel } from './expansion.js'
 import { carryOver, yieldHero } from './hero.js'
@@ -17,6 +17,8 @@ export interface HostActions {
   select(id: string | null): void
   followTo(layer: number, refit: 'overview' | 'none' | (() => void)): void
   text(key: MessageKey, vars?: Record<string, string | number>): string
+  /** setData 最后一次给的数据，原样 */
+  data(): StrataData | null
 }
 
 const hook = <T>(set: Set<T>, cb: T) => {
@@ -109,11 +111,14 @@ export class PluginHost {
     }
   }
 
-  /** 回到核心的全景（不重新布局）。rebuild：按现在的展开状态重新生成全景，选中清掉 */
+  /**
+   * 回到核心的全景（不重新布局）。rebuild：按现在的展开状态重新生成全景，选中清掉。
+   * 模式在画的时候展开、收起过（c.stale），不管是哪个模式交还的，都要重建
+   */
   restore(rebuild: boolean) {
     const c = this.c
     if (c.disposed || !c.model) return
-    if (rebuild) {
+    if (rebuild || c.stale) {
       rebuildModel(c)
       c.state.selected = -1
     }
@@ -159,7 +164,11 @@ export class PluginHost {
     )
   }
 
+  /** 销毁：接管着的模式先收回（插件把自己的状态清掉、发 exit），再跑插件的销毁钩子 */
   dispose() {
+    const was = this.c.active
+    this.c.active = null
+    was?.mode.released?.()
     for (const cb of this.disposeHooks) cb()
   }
 
@@ -167,6 +176,9 @@ export class PluginHost {
     const c = this.c
     const a = this.actions
     return {
+      get data() {
+        return a.data()
+      },
       get model() {
         return c.model
       },

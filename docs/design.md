@@ -141,7 +141,7 @@ The visuals are checked against a reference image (a panorama screenshot of the 
 | Nodes | A softly glowing bead: saturated domain colour, slightly brighter core, a small faint halo. Smaller than you would expect; the picture needs empty space |
 | Relations in a layer | Thin arcs, taking each end node's colour and blending in the middle. Longer arcs rise higher, up to a limit |
 | Mapping lines | Hairline straight lines, one step thinner and fainter than in-layer arcs |
-| Labels | Clean white text, regular weight, larger near the camera. Long-tail labels are hidden by default |
+| Labels | Clean white text, regular weight, larger near the camera. Small layers show every name; in large ones the long tail shows on hover. Configurable (`labels`) |
 | Background | Slightly brighter dark blue in the middle, darker towards the edges |
 
 What to keep:
@@ -163,13 +163,12 @@ What to keep:
 
 ## Next
 
-1. Gap computation and a gap list: for each ontology relation, whether the physical layer connects it directly, in a few hops, or not at all; for each foreign key, whether there is a matching relation. Colour would then show consistency.
-2. Paths side by side: the ontology path on top, the matching join path below, connected by mapping lines.
-3. The look of expanded fields: today a small ring of dots around the table; with many fields it gets crowded and labels overlap. It needs its own design.
+1. Paths side by side: the ontology path on top, the matching join path below, connected by mapping lines.
+2. The look of expanded fields: today a small ring of dots around the table; with many fields it gets crowded and labels overlap. It needs its own design.
 
 ## React wrapper
 
-`kgstrata/react` only connects the engine to React: `<StrataCanvas>` creates and disposes in an effect (each strict-mode mount gets its own instance), and calls `setData` only when the `data` reference changes; `useStrataState` turns `layers`, `hero`, `expanded` and the focused layer into React state with `useSyncExternalStore`, keeping the same reference when nothing changed. Panels output only `kgs-` prefixed markup; their look is in the optional `styles.css`, their position is up to you. The boundaries hold: `react/index` and `react/path` do not import kgdiff; `react/diff` gets it through `kgstrata/diff`.
+`kgstrata/react` only connects the engine to React: `<StrataCanvas>` creates and disposes in an effect (each strict-mode mount gets its own instance), and calls `setData` only when the `data` reference changes; `useStrataState` turns `layers`, `hero`, `expanded` and the focused layer into React state with `useSyncExternalStore`, keeping the same reference when nothing changed. Panels output only `kgs-` prefixed markup; their look is in the optional `styles.css`, their position is up to you. The boundaries hold: `react/index`, `react/path` and `react/audit` do not import kgdiff; `react/diff` gets it through `kgstrata/diff`.
 
 ## Modules
 
@@ -194,5 +193,6 @@ What to keep:
 | `engine/core.ts`, `engine/types.ts` | Shared internal state of the modules; the public types (`StrataOptions`, `StrataView`, event payloads) |
 | `path/` | Path replay plugin: steps → spotlight; numbers, segments and ripples painted after styling |
 | `diff/` | Comparison plugin: two `Resolved` + layout → kgdiff scene; per frame → `Looks` (the only place that imports `@kgdiff/*`) |
+| `audit/` | Mapping audit: `auditMappings` (plain computation, in headless) and the audit plugin: collapsed model, gaps in the gap colour, the selected item lit on both layers |
 
-Entry points: `index.ts` (core, without kgdiff or the two plugins), `path/index.ts`, `diff/index.ts`, `headless.ts` (no three.js, no kgdiff), and for React `react/index.ts`, `react/path.tsx`, `react/diff.tsx`. The contract is in `src/types.ts`. The engine does not depend on React; `demo/` is the demo page.
+Entry points: `index.ts` (core, without kgdiff or the plugins), `path/index.ts`, `diff/index.ts`, `audit/index.ts`, `headless.ts` (no three.js, no kgdiff), and for React `react/index.ts`, `react/path.tsx`, `react/diff.tsx`, `react/audit.tsx`. The contract is in `src/types.ts`. The engine does not depend on React; `demo/` is the demo page.

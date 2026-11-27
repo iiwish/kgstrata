@@ -33,6 +33,8 @@ export interface Model {
   edgeAt: Map<string, number>
   /** 关系的类型（落地、外键……）；没写类型的是空串 */
   edgeTag: string[]
+  /** 每条边的关系 id（Resolved 里的，上卷过的是上卷后的）；父节点到子节点的包含线是空串 */
+  edgeId: string[]
   /** 跨层的边是哪一种映射线；不是映射（或不是跨层）为 null */
   edgeClass: (LinkClass | null)[]
   groupColors: string[]
@@ -61,19 +63,21 @@ export function buildModel(data: Resolved, layout: StrataLayout, theme: Theme = 
   const edges: BaseEdge[] = []
   const edgeTag: string[] = []
   const edgeClass: (LinkClass | null)[] = []
-  const add = (s: string, t: string, kind: BaseEdge['kind'], tag: string, cls: LinkClass | null = null) => {
+  const edgeId: string[] = []
+  const add = (s: string, t: string, kind: BaseEdge['kind'], tag: string, id: string, cls: LinkClass | null = null) => {
     const a = index.get(s)
     const b = index.get(t)
     if (a === undefined || b === undefined || a === b) return
     edges.push({ s: a, t: b, kind })
     edgeTag.push(tag)
+    edgeId.push(id)
     edgeClass.push(cls)
   }
   data.layers.forEach((layer) => {
-    for (const n of layer.nodes) if (n.parent !== undefined) add(n.parent, n.id, 'contain', '')
-    for (const e of layer.edges ?? []) add(e.source, e.target, 'intra', e.type ?? '')
+    for (const n of layer.nodes) if (n.parent !== undefined) add(n.parent, n.id, 'contain', '', '')
+    for (const e of layer.edges ?? []) add(e.source, e.target, 'intra', e.type ?? '', e.id)
   })
-  for (const l of data.links) add(l.source, l.target, 'cross', l.type ?? '', layout.linkClass.get(l.id) ?? null)
+  for (const l of data.links) add(l.source, l.target, 'cross', l.type ?? '', l.id, layout.linkClass.get(l.id) ?? null)
   const adj: number[][] = nodes.map(() => [])
   const incident: number[][] = nodes.map(() => [])
   const edgeAt = new Map<string, number>()
@@ -114,7 +118,7 @@ export function buildModel(data: Resolved, layout: StrataLayout, theme: Theme = 
     },
   }
   const blocksOf = nodes.map((n) => layout.nodes.get(n.id)?.blocks ?? [])
-  return { data, layout, base: { nodes, edges }, specs, index, adj, incident, edgeAt, edgeTag, edgeClass, groupColors, blocksOf, renderer, theme }
+  return { data, layout, base: { nodes, edges }, specs, index, adj, incident, edgeAt, edgeTag, edgeId, edgeClass, groupColors, blocksOf, renderer, theme }
 }
 
 /** 节点的本色：饱和的领域色，只往白里兑一点。没有领域的用中性的浅蓝灰 */

@@ -11,6 +11,10 @@ import { DiffPanel, changesByLayer } from '../src/react/diff'
 import { familyColors } from '../src/diff'
 import { FollowToggle, HeroMixSlider, LayerList, NodeTip, SpreadSlider, ViewButtons } from '../src/react/panels'
 import { PathList, nodeInfoFrom } from '../src/react/path'
+import { AuditPanel, auditItems } from '../src/react/audit'
+import { auditColors } from '../src/audit'
+import { auditMappings } from '../src/headless'
+import { panorama } from '../demo/src/data'
 import {
   EMPTY_STATE,
   bindEvents,
@@ -256,6 +260,53 @@ describe('看变化的面板', () => {
     expect(familyColors('light').added.base).not.toBe(familyColors('dark').added.base)
     expect(familyColors({ diffScheme: 'light' })).toEqual(familyColors('light'))
     expect(familyColors()).toEqual(familyColors('dark'))
+  })
+})
+
+describe('审计的面板', () => {
+  const data = panorama('en')
+  const audit = auditMappings(data)
+  const label = (id: string) => data.nodes.find((n) => n.id === id)?.label ?? id
+
+  it('缺口按组列出：走不通的关系、没映射的两层节点、没用到的外键、只被路径用到的外键', () => {
+    const items = auditItems(audit, label)
+    expect([...new Set(items.map((x) => x.group))]).toEqual(['broken', 'unmapped-upper', 'unmapped-lower', 'unused', 'via-path'])
+    // 只列两端都有表、连不上的关系：一端没映射的算在那个节点上
+    expect(items.filter((x) => x.group === 'broken').map((x) => x.target.id)).toEqual(['c:customer||c:coupon_claim', 'c:coupon||c:order'])
+    expect(items.find((x) => x.target.id === 'c:customer||c:coupon_claim')).toEqual({
+      group: 'broken',
+      target: { kind: 'relation', id: 'c:customer||c:coupon_claim' },
+      title: `${label('c:customer')} — ${label('c:coupon_claim')}`,
+      detail: 'No join path within 3 hops',
+    })
+    expect(items.find((x) => x.target.id === 'c:promotion')!.detail).toBe('2 relations cannot be walked')
+    expect(items.find((x) => x.target.id === 'tbl:orders|fk|tbl:dim_date')!.detail).toBe('An end has nothing mapped onto it')
+    const via = items.find((x) => x.group === 'via-path')!
+    expect(via.target).toEqual({ kind: 'join', id: 'tbl:reviews|fk|tbl:order_items' })
+    expect(via.detail).toMatch(/^Used by the path of /)
+    // 走得通的关系、直接对应的外键不列
+    expect(items.some((x) => x.target.id === 'c:customer||c:favorite')).toBe(false)
+    expect(items).toHaveLength(2 + 5 + 5 + 7 + 1)
+  })
+
+  it('两行总数、每组的数目和颜色、中文', () => {
+    const out = html(<AuditPanel audit={null} current={audit} colors={{ gap: '#ff0000' }} locale="zh-CN" />)
+    expect(out).toContain('关系 48 条，走得通 39 条')
+    expect(out).toContain('外键 35 条，有关系直接对应 27 条')
+    expect(out).toContain('<i style="background:#ff0000"></i><span>走不通的关系</span><b>2</b>')
+    expect(out).toContain('<span>没映射到table</span><b>5</b>')
+    expect(out).toContain(`<i style="background:${auditColors('dark').weak}"></i><span>只被路径用到的外键</span><b>1</b>`)
+    expect(out).toContain('两端都有表，3 跳内连不上')
+    expect(out).toContain('aria-pressed="false"')
+  })
+
+  it('每组超过上限时折起来；没有缺口时说一声；没有审计时不出', () => {
+    const out = html(<AuditPanel audit={null} current={audit} limit={2} locale="en" />)
+    expect(out).toContain('3 more')
+    expect(out).toContain('5 more')
+    const clean = { ...audit, relations: [], joins: [], unmappedUpper: [], unmappedLower: [] }
+    expect(html(<AuditPanel audit={null} current={clean} locale="en" />)).toContain('No gaps')
+    expect(html(<AuditPanel audit={null} current={null} />)).toBe('')
   })
 })
 

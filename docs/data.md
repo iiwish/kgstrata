@@ -70,7 +70,7 @@ There is no limit on the number of layers. Two is the core case (ontology over t
 | `type` | `string?` | What it is: `'relation'`, `'table'`, `'field'`, your own types. Picks the shape through `nodeStyles`. |
 | `parent` | `string?` | Id of the node that contains this one, in the same layer. See [Containment](#containment-and-roll-up). |
 | `groups` | `Record<string, string>?` | Grouping id → group id. A node can belong to a group in several dimensions. |
-| `weight` | `number?` | Importance, 0..1. Overrides the default, which ranks nodes by degree within their layer. Values outside 0..1 are reported and clamped. |
+| `weight` | `number?` | Importance, 0..1. Overrides the default, which ranks nodes by degree within their layer. Sets the node's size and brightness, and which names go first (to choose names directly, use the `labels` option, see [api.md](api.md#labels)). Values outside 0..1 are reported and clamped. |
 | `attrs` | `Attrs?` | Any JSON value. Not drawn; compared by `kgstrata/diff`. |
 
 Built-in styles for `type` (`DEFAULT_NODE_STYLES`):

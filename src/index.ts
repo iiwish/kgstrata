@@ -32,4 +32,5 @@ export {
   type ViewSlot,
 } from './plugin.js'
 export type { Spotlight } from './styler.js'
+export type { LabelMode, LabelOptions } from './types.js'
 export * from './headless.js'

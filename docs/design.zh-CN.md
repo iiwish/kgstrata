@@ -141,7 +141,7 @@
 | 节点 | 一颗发柔光的珠子：饱和的领域色，芯略亮，外面一小圈很淡的晕。比想象的要小——画面要留白 |
 | 层内的线 | 细的弧线，两端各取节点的颜色、中间渐变。越长拱得越高，有上限 |
 | 映射线 | 发丝一样的直线，比层内的线再细一档、淡一档 |
-| 名字 | 干净的白字，常规字重，近大远小。长尾的名字平时不出 |
+| 名字 | 干净的白字，常规字重，近大远小。小层的名字全出；大层里长尾的名字悬停时才出。可以配（`labels`） |
 | 背景 | 中间略亮的深蓝，四周暗下去 |
 
 几条要守住的：
@@ -163,13 +163,12 @@
 
 ## 接下来
 
-1. 缺口计算和缺口清单：每条本体关系在物理层直连、绕几跳能通、还是走不通；每个外键有没有对应的关系。颜色改成说一致性。
-2. 路径的上下对照：上面是本体路径，下面是对应的 join 路径，中间用映射线连起来。
-3. 字段展开后的样子：现在是围着表的一圈小点，字段多的时候挤、名字互相挡，需要单独设计。
+1. 路径的上下对照：上面是本体路径，下面是对应的 join 路径，中间用映射线连起来。
+2. 字段展开后的样子：现在是围着表的一圈小点，字段多的时候挤、名字互相挡，需要单独设计。
 
 ## React 封装
 
-`kgstrata/react` 只是把引擎接到 React 上：`<StrataCanvas>` 在 effect 里创建、销毁（严格模式下各建各的），`data` 的引用变了才 `setData`；`useStrataState` 用 `useSyncExternalStore` 把 `layers`、`hero`、`expanded`、点中的层变成 React 状态，内容没变不换引用。面板只出带 `kgs-` 前缀的结构，样子在可选的 `styles.css` 里，位置交给用的人。边界照旧：`react/index`、`react/path` 的引入闭包里没有 kgdiff；`react/diff` 经由 `kgstrata/diff` 带上它。
+`kgstrata/react` 只是把引擎接到 React 上：`<StrataCanvas>` 在 effect 里创建、销毁（严格模式下各建各的），`data` 的引用变了才 `setData`；`useStrataState` 用 `useSyncExternalStore` 把 `layers`、`hero`、`expanded`、点中的层变成 React 状态，内容没变不换引用。面板只出带 `kgs-` 前缀的结构，样子在可选的 `styles.css` 里，位置交给用的人。边界照旧：`react/index`、`react/path`、`react/audit` 的引入闭包里没有 kgdiff；`react/diff` 经由 `kgstrata/diff` 带上它。
 
 ## 模块
 
@@ -194,5 +193,6 @@
 | `engine/core.ts`、`engine/types.ts` | 各模块共用的内部状态；公开的类型（`StrataOptions`、`StrataView`、事件带的东西） |
 | `path/` | 路径回放插件：步骤 → 强调串；样式之后叠序号、路径段、涟漪 |
 | `diff/` | 看变化插件：两版 `Resolved` + 布局 → kgdiff 场景；每帧 → `Looks`（唯一引入 `@kgdiff/*` 的地方） |
+| `audit/` | 映射审计：`auditMappings`（纯计算，在 headless 里）和审计插件：收起来的模型，缺口用缺口色，选中的一项在上下两层里一起亮 |
 
-入口：`index.ts`（核心，不带 kgdiff 和两个插件）、`path/index.ts`、`diff/index.ts`、`headless.ts`（不带 three、kgdiff），React 的 `react/index.ts`、`react/path.tsx`、`react/diff.tsx`。契约在 `src/types.ts`。引擎不依赖 React；`demo/` 是效果页。
+入口：`index.ts`（核心，不带 kgdiff 和插件）、`path/index.ts`、`diff/index.ts`、`audit/index.ts`、`headless.ts`（不带 three、kgdiff），React 的 `react/index.ts`、`react/path.tsx`、`react/diff.tsx`、`react/audit.tsx`。契约在 `src/types.ts`。引擎不依赖 React；`demo/` 是效果页。

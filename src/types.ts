@@ -88,6 +88,32 @@ export interface NodeStyle {
   childNoun?: string | Readonly<Partial<Record<string, string>>>
 }
 
+/**
+ * When a node's name is drawn at rest. Pointing at a node always shows its name and its neighbours'.
+ * - `auto`: the engine decides. Small layers show every name; large ones show the most important
+ *   (by `NodeSpec.weight`, else degree) and the long tail appears on hover. Supporting layers show fewer.
+ * - `always`: always drawn, also on supporting layers (fainter there); it still gives way to a name it would overlap.
+ * - `hover`: only while it or a neighbour is pointed at.
+ */
+export type LabelMode = 'auto' | 'always' | 'hover'
+
+/**
+ * Which names are drawn. The most specific rule wins: `nodes`, then `types`, then `layers`, then `mode`.
+ * Names that would overlap on screen still give way to each other, more important first.
+ */
+export interface LabelOptions {
+  /** Default `'auto'`. */
+  mode?: LabelMode
+  /** Layer id → mode. */
+  layers?: Record<string, LabelMode>
+  /** Node `type` → mode. */
+  types?: Record<string, LabelMode>
+  /** Node id → mode. */
+  nodes?: Record<string, LabelMode>
+  /** At most this many names on screen at once. Default `160`. */
+  max?: number
+}
+
 /** A shape says what a node is, not what changed (kgdiff's rule: hollow only means absent in this version). */
 export type NodeShape = 'bead' | 'octa' | 'tablet' | 'prism' | 'page'
 

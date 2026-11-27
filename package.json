@@ -1,6 +1,6 @@
 {
   "name": "kgstrata",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Layered 3D knowledge graphs: an ontology layer, a physical layer and the mappings between them, rendered with three.js.",
   "keywords": [
     "knowledge-graph",
@@ -42,6 +42,10 @@
       "types": "./dist/diff/index.d.ts",
       "default": "./dist/diff/index.js"
     },
+    "./audit": {
+      "types": "./dist/audit/index.d.ts",
+      "default": "./dist/audit/index.js"
+    },
     "./headless": {
       "types": "./dist/headless.d.ts",
       "default": "./dist/headless.js"
@@ -61,6 +65,10 @@
     "./react/diff": {
       "types": "./dist/react/diff.d.ts",
       "default": "./dist/react/diff.js"
+    },
+    "./react/audit": {
+      "types": "./dist/react/audit.d.ts",
+      "default": "./dist/react/audit.js"
     },
     "./react/styles.css": {
       "types": "./dist/react/styles.d.ts",
