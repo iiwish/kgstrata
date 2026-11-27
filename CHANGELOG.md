@@ -4,16 +4,34 @@ All notable changes are listed here. The format follows [Keep a Changelog](https
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-27
+
 ### Added
 
 - **`auditMappings(data, opts?)`** in `kgstrata/headless`: for two layers (the ontology and the tables), whether each upper relation can be walked through joins below (`joined` with the shortest paths, `unreachable`, `unmapped`), whether each join is accounted for above (`direct`, `via-path`, `unused`), and which nodes have no mapping. Works on everything collapsed; at most `maxHops` joins (3), only the shortest paths (at most `maxPaths`, 3), joins are relations of a `joinTypes` type (`['fk']`), and paths do not pass through unmapped nodes unless `throughUnmapped`. Plain JSON, no three.js. See docs/headless.md ("Audit the mappings"). New error code `audit-layers`.
+- **Mapping audit plugin `kgstrata/audit`**: `auditPlugin()` draws the audit on the map as a mode, everything collapsed and positions unchanged. Only gaps get colour: unwalkable relations (dashed), unused joins, joins only a path uses (a weaker colour), nodes with no mapping (a ring). `audit.select({ kind, id })` lights up what a relation, join or node involves on both layers and frames it; clicking a node on the map selects it. API: `show(opts?)`, `exit()`, `active`, `current`, `selected`, `select`, `shot`, events `enter` / `exit` / `select`, view state `audit`, and `auditColors(theme)`. See docs/plugins.md ("Mapping audit").
+- **`<AuditPanel>` in `kgstrata/react/audit`**: two totals and the gaps grouped by kind; click a line to select and frame it. `auditItems(audit, label?, t?)` gives the same lines as data. See docs/react.md.
+- **`MappingAudit.maxHops`**: the limit the audit used.
+- **`StrataContext.data`**: the object last passed to `setData` (`strata.data`), so a plugin can work on the data on screen.
+- **Label rules: `StrataOptions.labels`, `strata.setLabels()`, `strata.labels`.** A mode (`'auto' | 'always' | 'hover'`) with overrides per layer, node type and node id (the most specific wins), and `max`, the number of names on screen at most (160). Types `LabelOptions` and `LabelMode` from `kgstrata`. See docs/api.md ("Labels").
 
 ### Changed
 
+- **Small layers show every name.** Before, the bottom 40 % of each layer by importance never showed a name at rest, however much room there was, and a supporting layer kept only its one or two hubs (a three-node catalog layer showed one name). Now each layer shows its 40 most important names at least (all of them up to 40 nodes; large layers as before, about 60), and a supporting layer keeps its 8 most important names besides the hubs. Crowding is still handled by names giving way on screen. To keep a layer or type quiet, give it `'hover'` in `labels`.
 - **`@kgdiff/layout` is no longer a peer dependency.** `kgstrata/diff` stopped importing it in 0.2.0 (it gives kgdiff its own positions), and `@kgdiff/scene` depends on it, so it is installed anyway. Install `@kgdiff/core`, `@kgdiff/scene` and `@kgdiff/compute`; an existing `@kgdiff/layout` in your `package.json` does no harm.
+
+### Fixed
+
+- **A pending `diff.show()` no longer takes the frame back** from another plugin's mode that took over while kgdiff was computing; it resolves to `null`, and expanding nodes afterwards does not restart the comparison.
+- **Nodes expanded or collapsed while a mode draws** are applied to the normal view whichever mode hands the frame back. Before, if comparing was replaced by another mode (the audit), the normal view came back without the children it should show.
+- **`dispose()` while a mode draws** now calls the mode's `released()`: `diff.active` / `audit.active` are `false` afterwards and their `exit` event fires.
 
 ### Internal
 
+- `Model.edgeId` (`kgstrata/internals`): the relation id of each drawn edge (`''` for containment lines).
+- `new Styler(model, labels?)` (`kgstrata/internals`): takes the label rules (`LabelOptions`) as an optional second argument.
+- The demo page has an Audit tab.
+- The demo page's data is now the Three Kingdoms on the Chinese page and the Trojan War on the English one (`demo/src/threekingdoms.ts`, `demo/src/troy.ts`, built by `demo/src/saga.ts`): events, sides and figures from top to bottom, families containing their members, and for the Changes tab the official history against *Romance of the Three Kingdoms*, Homer against the 2004 film *Troy*. `?data=threekingdoms|troy` picks one; the online store moved to `?data=shop`. The README screenshots show the new data.
 - `pnpm check:bundlers` (`scripts/check-bundlers.mjs`): builds the packed package with Vite 8 and 6, webpack 5, Rollup, esbuild, Parcel 2 and Next.js 16 (Turbopack and `--webpack`), checks that kgdiff's three `.wasm` files are in each output, and with `--serve` runs every build in a browser page. Replaces the by-hand bundler check of 0.2.0.
 - The release workflow publishes with npm trusted publishing once it is set up on npmjs.com, and falls back to the `NPM_TOKEN` secret until then (`release.yml`, CONTRIBUTING.md).
 
@@ -217,6 +235,7 @@ First public version.
 - Type declarations resolve under both `moduleResolution: "bundler"` and `"NodeNext"` (relative imports carry `.js`); `check:pack` type-checks the package both ways.
 - Documentation in English and Simplified Chinese, and four runnable examples (`examples/`).
 
-[Unreleased]: https://github.com/iiwish/kgstrata/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/iiwish/kgstrata/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/iiwish/kgstrata/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/iiwish/kgstrata/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/iiwish/kgstrata/releases/tag/v0.1.0

@@ -70,7 +70,7 @@ const data: StrataData = {
 | `type` | `string?` | 它是什么：`'relation'`、`'table'`、`'field'`，或者你自己的类型。经 `nodeStyles` 决定形状。 |
 | `parent` | `string?` | 包含它的节点（同一层）。见[包含和上卷](#包含和上卷)。 |
 | `groups` | `Record<string, string>?` | 分组维度的 id → 组的 id。一个节点可以在几个维度里各属一组。 |
-| `weight` | `number?` | 重要度 0..1。不写就按同层里的连接数排名。超出 0..1 会报问题，布局时夹到 0..1。 |
+| `weight` | `number?` | 重要度 0..1。不写就按同层里的连接数排名。定节点的大小、亮度，以及谁的名字先出（要直接指定哪些名字出，用 `labels` 选项，见 [api.zh-CN.md](api.zh-CN.md#名字)）。超出 0..1 会报问题，布局时夹到 0..1。 |
 | `attrs` | `Attrs?` | 任意 JSON。不画出来；`kgstrata/diff` 会比较它。 |
 
 内置的 `type` 样式（`DEFAULT_NODE_STYLES`）：

@@ -17,8 +17,8 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const DIST = join(ROOT, 'dist')
-const CORE_ENTRIES = ['index', 'headless', 'internals', 'path/index', 'diff/index']
-const REACT_ENTRIES = ['react/index', 'react/path', 'react/diff']
+const CORE_ENTRIES = ['index', 'headless', 'internals', 'path/index', 'diff/index', 'audit/index']
+const REACT_ENTRIES = ['react/index', 'react/path', 'react/diff', 'react/audit']
 const ENTRIES = [...CORE_ENTRIES, ...REACT_ENTRIES]
 const STYLES = 'react/styles.css'
 /** 所有 js 加起来的上限。three 本身未压缩一百多万字节，打进来一定超 */
@@ -76,7 +76,7 @@ function closure(file, ext) {
 const textOf = (files) => files.map(read).join('\n')
 
 // 2. 引入闭包的边界（js 和 d.ts 都看：类型也会把声明拉进来）
-for (const e of ['index', 'headless', 'internals', 'path/index', 'react/index', 'react/path']) {
+for (const e of ['index', 'headless', 'internals', 'path/index', 'audit/index', 'react/index', 'react/path', 'react/audit']) {
   for (const ext of ['.js', '.d.ts']) {
     const f = join(DIST, e + ext)
     if (!existsSync(f)) continue
@@ -167,7 +167,7 @@ for (const f of dts) {
 // 4c. 公开入口的声明里没有汉字（注释也算：编辑器悬停显示的就是注释）。kgstrata/internals 和只在内部用的文件不查
 const PUBLIC_DTS = [
   'index', 'headless', 'engine/index', 'engine/types', 'plugin', 'types', 'locale', 'theme', 'resolve', 'layout', 'layout-io', 'stage', 'bridge',
-  'path/index', 'path/steps', 'diff/index', 'diff/adapter', 'react/index', 'react/canvas', 'react/context', 'react/panels', 'react/store', 'react/path', 'react/diff', 'react/styles',
+  'path/index', 'path/steps', 'diff/index', 'diff/adapter', 'audit/index', 'audit/compute', 'react/index', 'react/canvas', 'react/context', 'react/panels', 'react/store', 'react/path', 'react/diff', 'react/audit', 'react/styles',
 ]
 const HAN = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/
 for (const e of PUBLIC_DTS) {

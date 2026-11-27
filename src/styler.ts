@@ -2,7 +2,7 @@ import type { Bridge } from './bridge.js'
 import { mixHex } from './color.js'
 import { nodeColor, type Model } from './model.js'
 import type { Theme } from './theme.js'
-import type { EdgeLook, LabelLook, Looks, NodeLook } from './types.js'
+import type { EdgeLook, LabelLook, LabelMode, LabelOptions, Looks, NodeLook } from './types.js'
 
 // 平时的样子：星等亮度、悬停点亮邻居、聚焦一层，以及叠加层插件要的“强调一串节点”
 export interface StyleState {
@@ -31,6 +31,13 @@ export interface StyleState {
 export interface Spotlight {
   rank: ArrayLike<number>
 }
+
+/** 平时至少出这么多个名字（按重要度排前面的）：小层的名字全出，挤了交给屏幕上的避让 */
+const REST_LABELS = 40
+/** 配角层里算“最主要”的名次：这几个名字（和 0、1 等星）当配角时还留着 */
+const SIDE_LABELS = 8
+const MODES: readonly LabelMode[] = ['auto', 'always', 'hover']
+const modeOf = (v: unknown): LabelMode | undefined => (MODES.includes(v as LabelMode) ? (v as LabelMode) : undefined)
 
 const hash = (i: number) => {
   let x = Math.imul(i ^ 0x9e3779b9, 0x85ebca6b)
@@ -85,6 +92,10 @@ interface Rest {
   priority: number
   /** 平时就显示标签 */
   showLabel: boolean
+  /** 名字什么时候出（LabelOptions 定的） */
+  mode: LabelMode
+  /** 当配角时名字还留着：0、1 等星，或者在这层排前几 */
+  major: boolean
   /** 平时的不透明度：大图里长尾的节点淡下去，亮的少、暗的多 */
   alpha: number
 }
@@ -115,7 +126,11 @@ export class Styler {
   /** 主题跟着模型走（buildModel 时给的） */
   private readonly theme: Theme
 
-  constructor(private readonly m: Model) {
+  /** labels：哪些名字出（StrataOptions.labels） */
+  constructor(
+    private readonly m: Model,
+    labels: LabelOptions = {},
+  ) {
     const { base } = m
     const theme = (this.theme = m.theme)
     this.counts = m.data.layers.map((_, li) => base.nodes.filter((n) => n.layer === li).length)
@@ -130,9 +145,10 @@ export class Styler {
     this.crossK = Math.min(1, Math.max(0.15, Math.sqrt(90 / Math.max(base.edges.filter((e) => e.kind === 'cross').length, 1))))
     this.nodeK = this.counts.map((c) => Math.min(1, Math.max(0.12, Math.sqrt(50 / Math.max(c, 1)))))
     this.edgeK = edgeCounts.map((c) => Math.min(1, Math.max(0.1, Math.sqrt(70 / Math.max(c, 1)))))
+    const rank = this.ranks()
     this.rest = base.nodes.map((n, i) => {
       const color = nodeColor(m, i)
-      const rest = this.restOf(i)
+      const rest = this.restOf(i, rank[i], this.labelMode(i, labels))
       const gc = n.group >= 0 ? m.groupColors[n.group] : color
       const k = this.nodeK[n.layer]
       const alpha = n.mag <= 1 ? 1 : n.mag === 2 ? Math.max(0.7, Math.pow(k, 0.25)) : Math.max(0.42, Math.sqrt(k))
@@ -152,21 +168,54 @@ export class Styler {
     }
   }
 
+  /** 顶层节点在自己那层里按重要度排第几（从 0 起；并列的取同一个名次）；子节点是 -1 */
+  private ranks(): number[] {
+    const { layout, base } = this.m
+    const out = base.nodes.map(() => -1)
+    const byLayer = new Map<number, number[]>()
+    base.nodes.forEach((n, i) => {
+      if (layout.nodes.get(n.id)!.depth > 0) return
+      const list = byLayer.get(n.layer)
+      if (list) list.push(i)
+      else byLayer.set(n.layer, [i])
+    })
+    const imp = (i: number) => layout.nodes.get(base.nodes[i].id)!.importance
+    for (const list of byLayer.values()) {
+      list.sort((a, b) => imp(b) - imp(a))
+      list.forEach((i, k) => (out[i] = k > 0 && imp(list[k - 1]) === imp(i) ? out[list[k - 1]] : k))
+    }
+    return out
+  }
+
+  /** 这个节点的名字按哪条规则出：节点 > 类型 > 层 > 缺省 */
+  private labelMode(i: number, o: LabelOptions): LabelMode {
+    const spec = this.m.specs[i]
+    const layer = this.m.data.layers[this.m.base.nodes[i].layer].id
+    return (
+      modeOf(o.nodes?.[spec.id]) ?? (spec.type !== undefined ? modeOf(o.types?.[spec.type]) : undefined) ?? modeOf(o.layers?.[layer]) ?? modeOf(o.mode) ?? 'auto'
+    )
+  }
+
   // 亮度、光晕跟星等走；标签的档位跟着星等分三级。只有 0、1 等星亮度 > 1（会泛光）
-  private restOf(i: number): Omit<Rest, 'color' | 'glow' | 'edge' | 'map' | 'ringColor' | 'litColor' | 'alpha'> {
+  private restOf(i: number, rank: number, mode: LabelMode): Omit<Rest, 'color' | 'glow' | 'edge' | 'map' | 'ringColor' | 'litColor' | 'alpha'> {
     const { layout, base } = this.m
     const theme = this.theme
     const n = base.nodes[i]
     const p = layout.nodes.get(n.id)!
     const imp = p.importance
     const intensity = theme.magnitude[n.mag]
+    const at = (auto: boolean) => (mode === 'auto' ? auto : mode === 'always')
+    // 一直出的名字在避让里先占位
+    const lift = mode === 'always' ? 1 : 0
     // 展开出来的子节点（字段）：小一号的灰字，父节点展开着就一直出
-    if (p.depth > 0) return { intensity, labelSize: 11, labelWeight: 400, labelColor: theme.label.secondary, priority: 0.5 + imp * 0.1, showLabel: true }
-    // 名字分三档：枢纽是大一号的白字，中间一档是灰字，长尾平时不出（悬停或聚焦这一层时才出）
+    if (p.depth > 0) return { intensity, labelSize: 11, labelWeight: 400, labelColor: theme.label.secondary, priority: 0.5 + imp * 0.1 + lift, showLabel: at(true), mode, major: false }
+    const major = n.mag <= 1 || rank < SIDE_LABELS
+    // 名字分三档：枢纽是大一号的白字，中间一档是白字，长尾是灰字
+    // 长尾的名字只在大层里收起来（悬停或聚焦这一层时才出）：每层排前 REST_LABELS 个的名字总是出
     // 字号是在镜头对准的距离上的大小；渲染时近处的字放大、远处的缩小
-    if (n.mag <= 1) return { intensity, labelSize: n.mag === 0 ? 15 : 14, labelWeight: 400, labelColor: theme.label.primary, priority: 0.9 + imp * 0.05, showLabel: true }
-    if (n.mag === 2) return { intensity, labelSize: 13, labelWeight: 400, labelColor: theme.label.primary, priority: 0.55 + imp * 0.2, showLabel: true }
-    return { intensity, labelSize: 12.5, labelWeight: 400, labelColor: theme.label.secondary, priority: 0.3 + imp * 0.2, showLabel: false }
+    if (n.mag <= 1) return { intensity, labelSize: n.mag === 0 ? 15 : 14, labelWeight: 400, labelColor: theme.label.primary, priority: 0.9 + imp * 0.05 + lift, showLabel: at(true), mode, major }
+    if (n.mag === 2) return { intensity, labelSize: 13, labelWeight: 400, labelColor: theme.label.primary, priority: 0.55 + imp * 0.2 + lift, showLabel: at(true), mode, major }
+    return { intensity, labelSize: 12.5, labelWeight: 400, labelColor: theme.label.secondary, priority: 0.3 + imp * 0.2 + lift, showLabel: at(rank < REST_LABELS), mode, major }
   }
 
   resolve(s: StyleState): Looks {
@@ -249,7 +298,7 @@ export class Styler {
       let halo = theme.haloAlpha[n.mag] * this.nodeK[n.layer]
       // 配角程度：主角 0，紧挨主角的层 1，更远的大于 1。越靠配角：名字越少、越小、越淡
       const side = s.stage ? (s.stage.sides[n.layer] ?? 0) : 0
-      let lab = r.showLabel || s.focusLayer === n.layer ? 1 : 0
+      let lab = r.showLabel || (s.focusLayer === n.layer && r.mode !== 'hover') ? 1 : 0
       let prio = r.priority
       let ring = 0
       const layerOn = L.layers[n.layer]
@@ -309,8 +358,10 @@ export class Styler {
       }
       if (side > 0 && !lit[i] && order[i] === 0) {
         alpha *= 1 - 0.2 * Math.min(side, 1)
-        // 最主要的几个名字只是淡一点，隔了一层以上的配角连它们也收掉；其余的在分量过半之前就收掉
-        lab *= n.mag <= 1 ? Math.max(0, 1 - 0.3 * side - Math.max(0, side - 1) * 4) : Math.max(0, 1 - side * 2)
+        // 一直出的名字只是淡一点；最主要的几个名字也淡一点，隔了一层以上的配角连它们也收掉；
+        // 其余的在分量过半之前就收掉
+        if (r.mode === 'always') lab *= Math.max(0.55, 1 - 0.3 * side)
+        else lab *= r.major ? Math.max(0, 1 - 0.3 * side - Math.max(0, side - 1) * 4) : Math.max(0, 1 - side * 2)
       }
       o.intensity = intensity
       o.alpha = alpha

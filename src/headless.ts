@@ -27,7 +27,7 @@ export { checkLayout, layoutFromJSON, layoutToJSON } from './layout-io.js'
 export { stageOf, scaleAt, levelAt, type Stage, type StageInput } from './stage.js'
 export { bridgesOf, type Bridge } from './bridge.js'
 // 映射的审计：上层关系在下层走不走得通、下层连接有没有上层关系对应、哪些节点没映射
-export { auditMappings, type AuditOptions, type JoinAudit, type JoinPath, type MappingAudit, type RelationAudit } from './audit.js'
+export { auditMappings, type AuditOptions, type JoinAudit, type JoinPath, type MappingAudit, type RelationAudit } from './audit/compute.js'
 // 契约的类型：输入数据，和 headless 函数签名里出现的整理、布局结果。渲染器每帧画的样子（Looks 那一族）、
 // 渲染器的底子（BaseNode、BaseEdge）只给写渲染和接管模式的人，在 kgstrata/internals
 export type {

@@ -13,9 +13,11 @@ export const KGSTRATA_ALIASES: Alias[] = [
   { find: /^kgstrata\/internals$/, replacement: lib('internals.ts') },
   { find: /^kgstrata\/path$/, replacement: lib('path/index.ts') },
   { find: /^kgstrata\/diff$/, replacement: lib('diff/index.ts') },
+  { find: /^kgstrata\/audit$/, replacement: lib('audit/index.ts') },
   { find: /^kgstrata\/react$/, replacement: lib('react/index.ts') },
   { find: /^kgstrata\/react\/path$/, replacement: lib('react/path.tsx') },
   { find: /^kgstrata\/react\/diff$/, replacement: lib('react/diff.tsx') },
+  { find: /^kgstrata\/react\/audit$/, replacement: lib('react/audit.tsx') },
   { find: /^kgstrata\/react\/styles\.css$/, replacement: lib('react/styles.css') },
 ]
 

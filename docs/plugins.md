@@ -2,7 +2,7 @@
 
 [简体中文](plugins.zh-CN.md)
 
-This page covers the two bundled plugins (path replay and version comparison) and how to write your own against the plugin contract in `src/plugin.ts`.
+This page covers the three bundled plugins (path replay, version comparison and the mapping audit) and how to write your own against the plugin contract in `src/plugin.ts`.
 
 The core `Strata` only draws a layered graph. Everything else is a plugin installed with `strata.use(plugin)`, which returns the plugin's own API, fully typed:
 
@@ -172,6 +172,74 @@ interface DiffView {
 
 `buildStrataDiff`, `createDiffLooks`, `hunkIndex`, `toKgdiffGraph`, `quietOf`, `applyQuiet`, the types `DiffFrameState` (the full per-frame state: `DiffView` plus hovered and selected node indexes, reduced motion, emphasis) and `HunkIndex`, and the constants `ATTR` (`strata.layer`, `strata.group`, `strata.folds`, `strata.weight`) and `HIERARCHY_PREDICATE` (`strata:parent`) describe how kgstrata data is handed to kgdiff. See the "What goes to kgdiff" section of [design.md](design.md).
 
+## Mapping audit: `kgstrata/audit`
+
+Draws the result of [`auditMappings`](headless.md#audit-the-mappings) on the map: which ontology relations cannot be walked through foreign keys, which foreign keys nothing in the ontology accounts for, and which nodes have no mapping. Nothing extra to install; it does not load kgdiff.
+
+```ts
+import { Strata } from 'kgstrata'
+import { auditPlugin } from 'kgstrata/audit'
+
+const strata = new Strata(host)
+const audit = strata.use(auditPlugin())
+strata.setData(data)
+
+const result = audit.show()                      // audits strata.data; same options as auditMappings
+audit.select({ kind: 'relation', id: 'c:customer||c:coupon_claim' }) // frames it on both layers
+audit.select({ kind: 'join', id: 'tbl:reviews|fk|tbl:order_items' })
+audit.select({ kind: 'node', id: 'c:invoice' })
+audit.exit()                                     // back to the normal view
+```
+
+The audit is a [mode](#overlays-and-modes). It draws everything collapsed, because that is how the audit counts (fields count for their tables), and keeps the positions of the normal view. The picture follows two rules: the base is neutral and colour stays on nodes; only what you ask about lights up.
+
+- **At rest**: nodes without a gap turn grey and their names are hidden (except the main ones). Relations, joins and mapping lines are faint and neutral. Only gaps get a colour (`auditColors(theme).gap`, `weak`):
+  - An upper relation that cannot be walked (`unreachable`) is a dashed line in the gap colour, and its two ends keep their colour and names.
+  - An `unused` join is a solid line in the gap colour.
+  - A `via-path` join (only a reported path walks it) is a line in the weaker colour.
+  - A node with no mapping keeps its colour and name and gets a ring in the gap colour. Relations with an unmapped end (`unmapped`) are not marked separately: the gap is on the node.
+  - Layers outside the two audited ones are dimmed.
+  - Many gap lines in one layer are drawn fainter each, so they do not merge into a wall.
+- **Selected**: what the item involves lights up (and glows); everything else steps back. The camera frames it on both layers.
+  - A relation lights up its ends, the lower nodes they map onto, the mapping lines, and its shortest paths with the joins walked (with flow).
+  - A join lights up its two tables, the upper nodes mapped onto them, and the relations it matches or is used by.
+  - A node lights up itself, its mapping counterparts, and its relations in its own layer.
+
+Clicking a node on the map selects it; clicking it again or clicking empty space lets go. Expanding or collapsing while auditing does not change the picture; the normal view is rebuilt for the new expanded set on `exit`. `setTheme` recomputes the audit and keeps the selection. New data (`setData`) or another mode taking over ends the audit (`exit` is emitted).
+
+### `AuditApi`
+
+| Member | Type | Meaning |
+|---|---|---|
+| `show(opts?)` | `(opts?: AuditShowOptions) => MappingAudit \| null` | Audits `strata.data` and takes over the view. Options are those of `auditMappings` (`upper`, `lower`, `joinTypes`, `maxHops`, `maxPaths`, `throughUnmapped`); the language follows the instance. Synchronous. `null` without data. Throws `StrataError('audit-layers')` for unknown layers. Calling it again recomputes (the selection is kept if it still exists). |
+| `exit()` | `() => void` | Returns to the normal view. The camera returns to the overview unless the user moved it while auditing. |
+| `active` | `boolean` | An audit is on screen. |
+| `current` | `MappingAudit \| null` | The audit on screen. |
+| `selected` | `AuditTarget \| null` | The selected item (a copy). |
+| `select(target)` | `(target: AuditTarget \| null) => void` | Selects an item and frames it; `null` or an unknown item clears the selection and hands the camera back. |
+| `shot(target, opts?)` | `(target: AuditTarget, opts?: { duration?: number }) => void` | Frames an item without selecting it. `duration` in seconds (default 1.2; `0` jumps). |
+| `on(event, cb)` | `() => void` | `enter` with the `MappingAudit` (also after `setTheme`), `exit` with `null`, `select` with the new `AuditTarget \| null` (list, map click or `select`). |
+
+```ts
+interface AuditTarget {
+  kind: 'relation' | 'join' | 'node'
+  id: string   // RelationAudit.id, JoinAudit.id, or a node id of the two audited layers
+}
+```
+
+`auditColors(scheme?)` returns `{ gap, weak }` as the audit draws them, for building your own panel. Pass the theme (`auditColors(strata.theme)`) or `'dark' | 'light'`; it follows `theme.diffScheme`. The React `AuditPanel` does this. `kgstrata/audit` also re-exports `auditMappings` and its types.
+
+### View state
+
+While auditing the plugin registers `audit` in the view state:
+
+```ts
+strata.view.audit  // { selected: AuditTarget | null } while auditing, otherwise null
+strata.setView({ audit: { selected: { kind: 'node', id: 'c:invoice' } } })
+```
+
+`setView` applies it only while an audit is on screen; call `audit.show()` first.
+
 ## Writing a plugin
 
 A plugin is an object with a `name` and an `install(ctx)` function. `install` receives a `StrataContext` and returns whatever API you want `use()` to hand back.
@@ -197,6 +265,7 @@ export function myPlugin(): StrataPlugin<{ hello(): void }> {
 
 | Member | Meaning |
 |---|---|
+| `data` | The object last passed to `setData`, as given (`strata.data`); `null` before. |
 | `model` | The normal view's `Model`, or `null` before `setData`. Unchanged while a mode has taken over. |
 | `current` | The model being drawn: the mode's while a mode is active, otherwise `model`. |
 | `mode` | Name of the plugin whose mode is active, or `null`. |
@@ -249,7 +318,7 @@ There is no `emit`: a plugin cannot fake core events (`hover`, `select`, `hero`�
 There are two ways to change the picture. A plugin can use both.
 
 - **Overlay** (`ctx.overlay({ spotlight?, paint? })`): adds to the normal view. `spotlight()` returns a `Spotlight` (`{ rank }`, one entry per drawn node, `> 0` means lit, `0` means dimmed) or `null`. The core styler uses it to dim everything else, in the right order with focus and hero dimming. `paint(looks, frame)` runs after styling and can write into the frame's `Looks` (labels, badges, step numbers, `looks.extra.path`, ripples). Path replay is an overlay. If several overlays return a spotlight, the last installed wins.
-- **Mode** (`ctx.takeOver(mode)`): replaces what is drawn. A `StrataMode` provides its own `model`, renderer `base` and a `looks(frame)` function, and optionally `hover(i)`, `select(i)`, `released()`. Only one mode is active at a time; another plugin taking over, or `setData`, calls `released()` on the previous one. Version comparison is a mode. Building a `Model` and styling it uses `kgstrata/internals`; see the [take-over example](#example-a-take-over-mode).
+- **Mode** (`ctx.takeOver(mode)`): replaces what is drawn. A `StrataMode` provides its own `model`, renderer `base` and a `looks(frame)` function, and optionally `hover(i)`, `select(i)`, `released()`. Only one mode is active at a time; another plugin taking over, `setData` or `dispose()` calls `released()` on the previous one. Nodes expanded or collapsed while a mode draws are applied to the normal view when the frame is handed back, whichever mode hands it back. Version comparison is a mode. Building a `Model` and styling it uses `kgstrata/internals`; see the [take-over example](#example-a-take-over-mode).
 
 ### The frame pipeline
 

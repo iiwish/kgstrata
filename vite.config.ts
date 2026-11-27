@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 
-// 库的构建（效果页的配置在 demo/vite.config.ts）。八个入口各出一个 ESM 文件到 dist/，共用的代码落到 dist/chunks/。
-// 核心五个（index、headless、internals、path、diff），React 的三个（react/index、react/path、react/diff）。
+// 库的构建（效果页的配置在 demo/vite.config.ts）。十个入口各出一个 ESM 文件到 dist/，共用的代码落到 dist/chunks/。
+// 核心六个（index、headless、internals、path、diff、audit），React 的四个（react/index、react/path、react/diff、react/audit）。
 // 类型声明另由 tsc -p tsconfig.build.json 输出（逐文件，保证模块增强成立）。
 const src = (p: string) => fileURLToPath(new URL(`./src/${p}`, import.meta.url))
 
@@ -38,9 +38,11 @@ export default defineConfig({
         internals: src('internals.ts'),
         'path/index': src('path/index.ts'),
         'diff/index': src('diff/index.ts'),
+        'audit/index': src('audit/index.ts'),
         'react/index': src('react/index.ts'),
         'react/path': src('react/path.tsx'),
         'react/diff': src('react/diff.tsx'),
+        'react/audit': src('react/audit.tsx'),
       },
       formats: ['es'],
       fileName: (_format, name) => `${name}.js`,

@@ -1,14 +1,20 @@
 // 按包名引入构建产物的类型（TypeScript 的自引用会走 package.json 的 exports，落到 dist/*.d.ts）
-import { Strata, type HoverInfo, type SelectInfo, type StrataContext, type StrataView } from 'kgstrata'
+import { Strata, type HoverInfo, type LabelOptions, type SelectInfo, type StrataContext, type StrataView } from 'kgstrata'
 import { layoutFromJSON, layoutStrata, layoutToJSON, registerLocale, type DataIssue, type NodeStyle, type Normalized, type PlacedNode, type Resolved, type ResolvedNode, type StrataData, type StrataLayout, type StrataLayoutJSON } from 'kgstrata/headless'
 import { buildModel, Styler, type BaseEdge, type BaseNode, type EdgeEnd, type EdgeKind, type EdgeLook, type ExtraEdges, type LabelLook, type Looks, type Model, type NodeLook, type StyleState } from 'kgstrata/internals'
 import { pathPlugin, type PathApi } from 'kgstrata/path'
 import { diffPlugin, type DiffApi, type DiffView } from 'kgstrata/diff'
+import { auditColors, auditPlugin, type AuditApi, type AuditTarget, type MappingAudit } from 'kgstrata/audit'
 
 // path 插件用 declare module '../engine' 给 StrataView 补的 path 字段，在产物里仍然成立
 export const path: StrataView['path'] = ['ent:a', 'tbl:b']
 // diff 插件补的 diff 字段也一样
 export const diffView: StrataView['diff'] = { layer: 'union', t: 0, selectedHunk: null } satisfies DiffView
+// audit 插件补的 audit 字段也一样
+export const auditView: StrataView['audit'] = { selected: { kind: 'join', id: 'tbl:a|fk|tbl:b' } satisfies AuditTarget }
+// 插件拿得到 setData 给的数据
+export const ctxData = (ctx: StrataContext): StrataData | null => ctx.data
+export const audits = (a: AuditApi): [MappingAudit | null, number | undefined, string] => [a.show({ maxHops: 2, joinTypes: ['fk'] }), a.current?.maxHops, auditColors('light').gap]
 // 核心入口不再转出底层的东西
 // @ts-expect-error Model 只在 kgstrata/internals
 export type NoModel = import('kgstrata').Model
@@ -24,6 +30,9 @@ export type NoBaseNode = import('kgstrata/headless').BaseNode
 export type NoEdgeLook = import('kgstrata').EdgeLook
 export type RenderTypes = [Looks, NodeLook, EdgeLook, BaseNode, BaseEdge, LabelLook, ExtraEdges, EdgeEnd, EdgeKind]
 export type ContractTypes = [Resolved, Normalized, PlacedNode, StrataLayout, StrataLayoutJSON, ResolvedNode, NodeStyle, DataIssue, import('kgstrata').Resolved]
+// 标签规则从核心入口拿得到，选项和 setLabels 收的是同一个类型
+export const labels: LabelOptions = { mode: 'auto', layers: { catalog: 'always' }, types: { field: 'hover' }, nodes: { 'ent:a': 'always' }, max: 80 }
+export const setLabels = (s: Strata) => s.setLabels(s.labels)
 export const select = (e: SelectInfo) => e.node?.layerName ?? e.source
 export const io = [layoutToJSON, layoutFromJSON, registerLocale] as const
 // StrataView 不是 any：不存在的字段要报错
@@ -31,6 +40,7 @@ export const io = [layoutToJSON, layoutFromJSON, registerLocale] as const
 export const nope: StrataView['nope'] = 1
 
 export type Checks = [typeof Strata, typeof layoutStrata, StrataData, PathApi, DiffApi]
+export const auditOnly = [auditPlugin()] as const
 export const plugins = [pathPlugin(), diffPlugin({ locale: 'en', wasm: { compute: new URL('https://example.com/compute.wasm'), layout: '/layout.wasm' } })] as const
 
 // 0.2 的命名：shot 的选项、follow、hero、四边的 inset、指针位置都在 pointer 里、路径的 progress
@@ -64,6 +74,7 @@ import 'kgstrata/react/styles.css'
 import { LayerList, StrataCanvas, useStrataState, type LayerListProps, type StrataCanvasProps, type StrataState } from 'kgstrata/react'
 import { PathList, type PathItem } from 'kgstrata/react/path'
 import { DiffPanel, changesByLayer } from 'kgstrata/react/diff'
+import { AuditPanel, auditItems, type AuditItem } from 'kgstrata/react/audit'
 // 渲染器不是公开成员了
 // @ts-expect-error renderer 是私有的
 export const noRenderer = (s: Strata) => s.renderer
@@ -85,4 +96,4 @@ export const oldOnExpand: StrataCanvasProps = { data, onExpand: () => {} }
 // @ts-expect-error 没有这个 prop
 export const badProp: LayerListProps = { nope: 1 }
 export const paths: PathItem[] = [{ id: 'p', question: 'q', nodes: [] }]
-export type ReactChecks = [StrataCanvasProps, StrataState['hero'], typeof useStrataState, typeof PathList, typeof DiffPanel, typeof changesByLayer]
+export type ReactChecks = [StrataCanvasProps, StrataState['hero'], typeof useStrataState, typeof PathList, typeof DiffPanel, typeof changesByLayer, typeof AuditPanel, typeof auditItems, AuditItem]

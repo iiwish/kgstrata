@@ -21,7 +21,7 @@ pnpm check:bundlers      # optional, needs network: builds the packed package wi
 
 Before sending a change, run `pnpm typecheck && pnpm test && pnpm build && pnpm check:pack && pnpm build:examples`. CI runs the same commands on Node 22 and 24.
 
-Demo page query parameters: `?lang=zh|en`, `?layers=2|3|4`, `?stress=3000` (synthetic data), `?hero=table`, `?follow=1`, `?hidden=onto`.
+Demo page query parameters: `?lang=zh|en` (the Chinese page shows the Three Kingdoms, the English one the Trojan War), `?data=threekingdoms|troy|shop` (pick a data set; `shop` is the online store), `?layers=2|3` (`2|3|4` with `?data=shop`), `?stress=3000` (synthetic data), `?hero=person` (`?hero=table` with `?data=shop`), `?follow=1`, `?hidden=side` (`?hidden=onto` with `?data=shop`).
 
 ## Layout of the repository
 
@@ -30,7 +30,7 @@ Demo page query parameters: `?lang=zh|en`, `?layers=2|3|4`, `?stress=3000` (synt
 - `demo/`: the demo page (React), with its own `index.html` and `vite.config.ts`. It imports the library by package name (`kgstrata`, `kgstrata/react`…) like any user would; the config's aliases (and `paths` in `tsconfig.json`) point those names at `src/`. Not part of the package.
 - `examples/`: small standalone apps, pnpm workspace packages linked to the root's `dist/`.
 - `docs/`: documentation. English pages with a `*.zh-CN.md` counterpart. Read `docs/design.md` before changing how things look.
-- `tests/`: tests. Library tests use the fixed data in `tests/fixtures/`, not the demo data; `tests/data.test.ts` covers the demo data.
+- `tests/`: tests. Library tests use the fixed data in `tests/fixtures/`, not the demo data; `tests/saga.test.ts` and `tests/data.test.ts` cover the demo data (the Three Kingdoms and the Trojan War; the online store).
 - `scripts/check-pack.mjs`: checks on the built package. `scripts/compat-types.mjs` (`pnpm check:types-compat`): packs the library, installs it in a temporary directory with TypeScript 5.2 / 5.6 / latest × `@types/three` 0.160 / 0.170 / 0.187 and type-checks every entry with `skipLibCheck: false` under `moduleResolution` `bundler` and `nodenext`. It needs network and takes a few minutes, so it is not part of CI; run it before a release and when you touch exported types. A combination that fails only because `@types/three` itself does not compile with that TypeScript is reported separately (a control file importing only `three` fails too). `scripts/check-bundlers.mjs` (`pnpm check:bundlers`): installs the packed library (strict pnpm) into one small project per bundler (Vite 8 and 6, webpack 5, Rollup with `importMetaAssets()`, esbuild with the `wasm` option, Parcel 2 with `packageExports`, Next.js 16 with Turbopack and with `--webpack`, statically exported), builds each and checks that kgdiff's three `.wasm` files are in the output. With `--serve` it then serves all builds and a summary page that runs each one in an iframe (core, path, headless, version comparison) and lists `ok` / `err` per bundler; open it in a browser. `--only vite8,webpack5` picks bundlers; `--dir <path> --serve --skip-build` serves an earlier build again. It needs network and several minutes; run it before a release and when you touch how the diff entry loads kgdiff.
 - `.github/workflows/`: `ci.yml` runs the checks below; `release.yml` publishes to npm when a `v*` tag is pushed; `pages.yml` deploys the demo page to https://iiwish.github.io/kgstrata/ on every push to `main`.
 
@@ -39,7 +39,7 @@ Demo page query parameters: `?lang=zh|en`, `?layers=2|3|4`, `?stress=3000` (synt
 Someone who only wants the 3D view should not have to ship kgdiff and its WebAssembly. Someone who only needs the layout should not have to ship three.js. The import graph enforces this:
 
 ```
-kgstrata/headless          validate, normalize, layout, stage, bridges, locale, theme, types
+kgstrata/headless          validate, normalize, layout, audit, stage, bridges, locale, theme, types
   ▲                        no three, no kgdiff, no react
   │
 kgstrata                   Strata, renderer, plugin contract   (+ three)
@@ -47,9 +47,11 @@ kgstrata                   Strata, renderer, plugin contract   (+ three)
   ├── kgstrata/internals   buildModel, Styler, renderer types  no kgdiff, no react; not re-exported by kgstrata
   ├── kgstrata/path        pathPlugin                          no kgdiff
   ├── kgstrata/diff        diffPlugin, kgdiff adapter          the only user of @kgdiff/*
+  ├── kgstrata/audit       auditPlugin                         no kgdiff
   └── kgstrata/react       StrataCanvas, hooks, panels         (+ react), no kgdiff
         ├── kgstrata/react/path   PathList                     (+ kgstrata/path), no kgdiff
-        └── kgstrata/react/diff   DiffPanel                    (+ kgstrata/diff)
+        ├── kgstrata/react/diff   DiffPanel                    (+ kgstrata/diff)
+        └── kgstrata/react/audit  AuditPanel                   (+ kgstrata/audit), no kgdiff
 ```
 
 | Entry (source file) | three | react | kgdiff | path code | diff code |
@@ -59,16 +61,18 @@ kgstrata                   Strata, renderer, plugin contract   (+ three)
 | `kgstrata/internals` (`internals.ts`) | yes | no | no | no | no |
 | `kgstrata/path` (`path/index.ts`) | yes | no | no | yes | no |
 | `kgstrata/diff` (`diff/index.ts`) | yes | no | yes | no | yes |
+| `kgstrata/audit` (`audit/index.ts`) | yes | no | no | no | no |
 | `kgstrata/react` (`react/index.ts`) | yes | yes | no | no | no |
 | `kgstrata/react/path` (`react/path.tsx`) | yes | yes | no | yes | no |
 | `kgstrata/react/diff` (`react/diff.tsx`) | yes | yes | via `../diff` | no | yes |
+| `kgstrata/react/audit` (`react/audit.tsx`) | yes | yes | no | no | no |
 
 Each entry may import the ones above it in the tree. Rules:
 
 - **Only `src/diff/` may import `@kgdiff/*`.** Not the core, not path replay, not headless, not even with `import type` (type imports pull declarations into the `.d.ts` closure too).
 - **The import closure of `headless.ts` must not contain `three`** and must not touch `renderer/`.
 - The core entry does not import `path/` or `diff/`. Plugins talk to the core only through `StrataPlugin` / `StrataContext`.
-- **The four core entries must not import `react`.** `react/index.ts` and `react/path.tsx` must not reach kgdiff; `react/diff.tsx` gets it only through `../diff`.
+- **The six core entries must not import `react`.** `react/index.ts`, `react/path.tsx` and `react/audit.tsx` must not reach kgdiff; `react/diff.tsx` gets it only through `../diff`.
 
 `tests/modules.test.ts` walks the source imports and enforces these rules; `pnpm check:pack` checks them again on the build output (including shared chunks). A new entry point needs entries in both places, in `vite.config.ts`, in `package.json` `exports`, in `scripts/pack-types/check.ts`, and in the alias table in `demo/vite.config.ts` plus `paths` in `tsconfig.json`.
 

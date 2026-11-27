@@ -11,9 +11,9 @@
 // - 连接的覆盖分三档：direct（两端表映射到的上层节点之间有直接关系）/ via-path（只被某条关系给出的路径用到）/ unused。
 // - 另报两类缺口：上层没映射到下层的节点、下层没有上层映射的节点。
 
-import { DEFAULT_LOCALE, message, StrataError, type Locale } from './locale.js'
-import { normalize, project } from './resolve.js'
-import type { ResolvedEdge, StrataData } from './types.js'
+import { DEFAULT_LOCALE, message, StrataError, type Locale } from '../locale.js'
+import { normalize, project } from '../resolve.js'
+import type { ResolvedEdge, StrataData } from '../types.js'
 
 export interface AuditOptions {
   /** The upper layer's id (the ontology). Default: of the two adjacent layers with the most mappings between them, the upper one. */
@@ -78,6 +78,8 @@ export interface JoinAudit {
 export interface MappingAudit {
   upper: string
   lower: string
+  /** The longest join path that counted (`AuditOptions.maxHops`). */
+  maxHops: number
   /** Every relation of the upper layer (containment is not a relation). */
   relations: RelationAudit[]
   /** Every join of the lower layer (relations of a `joinTypes` type). */
@@ -192,6 +194,7 @@ export function auditMappings(data: StrataData, opts: AuditOptions = {}): Mappin
   return {
     upper: ids[u],
     lower: ids[d],
+    maxHops,
     relations,
     joins,
     unmappedUpper: resolved.layers[u].nodes.filter((n) => !down.has(n.id)).map((n) => n.id),

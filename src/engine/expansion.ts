@@ -79,7 +79,8 @@ export function rebuildModel(c: Core) {
   const g = c.expansion.graph()
   if (!g) return
   c.model = buildModel(g.data, g.layout, c.theme)
-  c.styler = new Styler(c.model)
+  c.styler = new Styler(c.model, c.labels)
+  c.stale = false
 }
 
 /** 整理数据用的选项：节点的样子、色板（主题的）、问题描述的语言 */

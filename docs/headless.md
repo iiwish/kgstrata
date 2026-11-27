@@ -179,7 +179,9 @@ The rules:
 - **Join coverage**, for each join: `direct` when nodes mapped onto its two ends are related above (`direct` lists those relations); `via-path` when it is only walked by a reported path (`usedBy`); `unused` otherwise.
 - `unmappedUpper` / `unmappedLower`: nodes with no mapping between the two layers.
 
-`upper` and `lower` pick the layers (layer ids); giving one takes the adjacent layer for the other. Unknown or equal layers throw `StrataError('audit-layers')`. The result is plain JSON. Relation and join ids are those of `project(normalize(data))`, so a relation rolled up from fields has the id `source|type|target` of its tables.
+`upper` and `lower` pick the layers (layer ids); giving one takes the adjacent layer for the other. Unknown or equal layers throw `StrataError('audit-layers')`. The result is plain JSON. Relation and join ids are those of `project(normalize(data))`, so a relation rolled up from fields has the id `source|type|target` of its tables. `maxHops` in the result records the limit used.
+
+To see the gaps on the map, use the audit plugin ([`kgstrata/audit`](plugins.md#mapping-audit-kgstrataaudit)) and its list panel ([`<AuditPanel>`](react.md#auditpanel-kgstratareactaudit)).
 
 ## Bridges across hidden layers
 

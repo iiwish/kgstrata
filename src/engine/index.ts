@@ -8,7 +8,8 @@ import { Emitter, type StrataEvents, type StrataPlugin } from '../plugin.js'
 import { StrataRenderer } from '../renderer/index.js'
 import { isFatal, normalize } from '../resolve.js'
 import { createTheme, type DeepPartial, type Theme } from '../theme.js'
-import type { DataIssue, StrataData } from '../types.js'
+import { Styler } from '../styler.js'
+import type { DataIssue, LabelOptions, StrataData } from '../types.js'
 import { emit, hiddenOf, indexOf, layerIndex, layersOf, type Core } from './core.js'
 import { Expansion, layoutOf, normalizeOptions, rebuildModel } from './expansion.js'
 import { adoptMix, heroOnLoad, NO_HERO, yieldHero } from './hero.js'
@@ -78,8 +79,11 @@ export class Strata {
       locale,
       messages: { ...options.messages },
       theme,
+      labels: copyLabels(options.labels),
+      stale: false,
     })
-    this.plugins = new PluginHost(c, { select: (id) => this.select(id), followTo: (l, r) => followTo(c, l, r), text: (k, v) => this.text(k, v) })
+    this.renderer.labelLimit = labelLimitOf(c.labels)
+    this.plugins = new PluginHost(c, { select: (id) => this.select(id), followTo: (l, r) => followTo(c, l, r), text: (k, v) => this.text(k, v), data: () => this.source })
     const el = this.renderer.gl.domElement
     this.pointer = new Pointer(el, (x, y, l) => this.renderer.pick(x, y, l), () => c.looks, {
       hover: (i) => hoverAt(c, i, this.pointer),
@@ -152,6 +156,24 @@ export class Strata {
     }
     this.plugins.notify('theme')
     emit(c, 'theme', c.theme)
+  }
+
+  /** Which names are drawn (`StrataOptions.labels`; `setLabels` changes it). A copy. */
+  get labels(): LabelOptions {
+    return copyLabels(this.core.labels)
+  }
+
+  /**
+   * Replaces the label rules (`setLabels({})` returns to `auto` everywhere). Takes effect on the next
+   * frame; layout, selection and camera do not change. Plugin modes that draw their own names (comparing,
+   * auditing) keep their rules.
+   */
+  setLabels(labels: LabelOptions = {}) {
+    const c = this.core
+    if (c.disposed) return
+    c.labels = copyLabels(labels)
+    this.renderer.labelLimit = labelLimitOf(c.labels)
+    if (c.model) c.styler = new Styler(c.model, c.labels)
   }
 
   /** Installs a plugin and returns its API. Two plugins with the same name throw `StrataError('plugin-installed')`. */
@@ -227,7 +249,10 @@ export class Strata {
     if (c.disposed || !c.expansion.set(ids) || !c.expansion.normal) return
     emit(c, 'expanded', this.expanded)
     // 插件可以接手这次展开（看变化时两版按新的展开状态重新比一遍），这时全景不重建
-    if (this.plugins.claimExpand()) return
+    if (this.plugins.claimExpand()) {
+      c.stale = true
+      return
+    }
     this.keepSelected(() => rebuildModel(c))
     if (!c.model) return
     this.renderer.setBase(c.model.renderer)
@@ -454,4 +479,23 @@ export class Strata {
     this.core.events.clear()
     this.renderer.dispose()
   }
+}
+
+/** 拷一份标签规则：表各拷一层，不和调用方共用对象；不认得的值留给样式去忽略 */
+function copyLabels(o: LabelOptions = {}): LabelOptions {
+  const out: LabelOptions = {}
+  if (o.mode !== undefined) out.mode = o.mode
+  if (o.layers) out.layers = { ...o.layers }
+  if (o.types) out.types = { ...o.types }
+  if (o.nodes) out.nodes = { ...o.nodes }
+  if (o.max !== undefined) out.max = o.max
+  return out
+}
+
+/** 一屏最多几个名字的缺省（和渲染器自己的缺省一样；引擎每次都把算好的数交给渲染器） */
+const LABEL_LIMIT = 160
+
+/** 一屏最多几个名字：非负整数，不合法的按缺省 */
+function labelLimitOf(o: LabelOptions): number {
+  return typeof o.max === 'number' && Number.isFinite(o.max) && o.max >= 0 ? Math.floor(o.max) : LABEL_LIMIT
 }

@@ -9,7 +9,7 @@ import type { BaseEdge, BaseNode, EdgeLook, LabelLook, Looks } from '../types.js
 import { CameraRig } from './camera.js'
 import { Edges } from './edges.js'
 import { createFog, placeFog, type Fog } from './fog.js'
-import { Labels, type LabelItem } from './labels.js'
+import { Labels, MAX_SHOWN, type LabelItem } from './labels.js'
 import { MARK, Marks } from './marks.js'
 import { Nodes, drawnRadius, shrink } from './nodes.js'
 import { Plates, type PlatesInput } from './plates.js'
@@ -86,6 +86,8 @@ export class StrataRenderer {
   /** 这一帧要画的所有线：底子里的，加上穿透线、路径、标记。每帧复用 */
   private drawn: EdgeLook[] = []
   private labels: Labels
+  /** 一屏最多显示几个名字（LabelOptions.max，引擎给） */
+  labelLimit = MAX_SHOWN
   private base: RendererBase | null = null
   /** 节点世界坐标，每帧更新 */
   world: Float32Array = new Float32Array(0)
@@ -375,7 +377,7 @@ export class StrataRenderer {
       copyLabel(this.itemLooks[i * 2], vis ? l.label : null, l?.badge ?? null)
       copyLabel(this.itemLooks[i * 2 + 1], vis ? l.label2 : null, null)
     }
-    this.labels.update(this.items, this.rig.camera, this.width, this.height, dt, focusDist)
+    this.labels.update(this.items, this.rig.camera, this.width, this.height, dt, focusDist, this.labelLimit)
     this.composer.render(dt)
     this.gl.autoClear = false
     this.gl.clearDepth()

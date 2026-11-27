@@ -2,7 +2,7 @@
 
 [English](plugins.md)
 
-这篇讲自带的两个插件（路径回放、两版对比），以及怎么按 `src/plugin.ts` 里的插件契约自己写一个。
+这篇讲自带的三个插件（路径回放、两版对比、映射审计），以及怎么按 `src/plugin.ts` 里的插件契约自己写一个。
 
 核心 `Strata` 只管画一张多层的图，别的都是插件，用 `strata.use(plugin)` 装上。`use` 原样交回插件自己的接口，类型是全的：
 
@@ -172,6 +172,74 @@ interface DiffView {
 
 `buildStrataDiff`、`createDiffLooks`、`hunkIndex`、`toKgdiffGraph`、`quietOf`、`applyQuiet`，类型 `DiffFrameState`（每帧的完整状态：`DiffView` 加上指着、点中的节点下标、减弱动效、强调）和 `HunkIndex`，以及常量 `ATTR`（`strata.layer`、`strata.group`、`strata.folds`、`strata.weight`）和 `HIERARCHY_PREDICATE`（`strata:parent`），说明 kgstrata 的数据是怎么交给 kgdiff 的。见 [design.zh-CN.md](design.zh-CN.md) 的“交给 kgdiff 的是什么”。
 
+## 映射审计：`kgstrata/audit`
+
+把 [`auditMappings`](headless.zh-CN.md#审计映射) 的结果画在图上：哪些本体关系在外键上走不通，哪些外键在本体里没有对应，哪些节点没有映射。不用多装，也不加载 kgdiff。
+
+```ts
+import { Strata } from 'kgstrata'
+import { auditPlugin } from 'kgstrata/audit'
+
+const strata = new Strata(host)
+const audit = strata.use(auditPlugin())
+strata.setData(data)
+
+const result = audit.show()                      // 审计 strata.data；选项和 auditMappings 一样
+audit.select({ kind: 'relation', id: 'c:customer||c:coupon_claim' }) // 上下两层一起框住它
+audit.select({ kind: 'join', id: 'tbl:reviews|fk|tbl:order_items' })
+audit.select({ kind: 'node', id: 'c:invoice' })
+audit.exit()                                     // 回到全景
+```
+
+审计是一个[模式](#叠加层和模式)。它按全部收起来画，因为审计就是这么算的（字段算在表头上），节点的位置和全景一样。画面守两条规矩：底子是中性的，颜色只给节点；光只给你在问的东西。
+
+- **平时**：没有缺口的节点退成灰，名字收起（主要的几个除外）。关系、外键、映射线都是淡的中性色。只有缺口带颜色（`auditColors(theme)` 的 `gap`、`weak`）：
+  - 走不通的本体关系（`unreachable`）画成缺口色的虚线，两端保留本色、出名字。
+  - 完全没用到的外键（`unused`）画成缺口色的实线。
+  - 只被路径用到的外键（`via-path`）用弱一档的颜色。
+  - 没映射的节点保留本色、出名字，套一圈缺口色的环。一端没映射的关系（`unmapped`）不另外标：缺口在那个节点上。
+  - 不在审计的两层里的层压暗。
+  - 一层里缺口线多了，每条就画得淡一些，不至于连成一片墙。
+- **选中一项**：它牵涉的东西亮起来（会泛光），其余的再退一步；镜头把上下两层里牵涉的部分一起框住。
+  - 选一条关系：亮的是两端、它们落到的下层节点、映射线，以及最短路径和走过的外键（带流动）。
+  - 选一条外键：亮的是它的两张表、映射到这两张表的上层节点，以及和它直接对应、用到它的关系。
+  - 选一个节点：亮的是它自己、它在另一层的映射对象，以及它在本层的关系。
+
+在图上点一个节点就选中它，再点一次或者点空白处放开。审计时展开、收起不改画面，`exit` 时全景再按新的展开状态重建。`setTheme` 会重新算一遍，选中项接着用。换数据（`setData`）或者别的模式接管，审计就结束（发 `exit`）。
+
+### `AuditApi`
+
+| 成员 | 类型 | 含义 |
+|---|---|---|
+| `show(opts?)` | `(opts?: AuditShowOptions) => MappingAudit \| null` | 审计 `strata.data`，接管画面。选项和 `auditMappings` 一样（`upper`、`lower`、`joinTypes`、`maxHops`、`maxPaths`、`throughUnmapped`），语言跟着实例。是同步的。没有数据时返回 `null`。层不对抛 `StrataError('audit-layers')`。再调一次就重新算（选中项还在的话接着用）。 |
+| `exit()` | `() => void` | 回到全景。镜头回到总览，审计时用户动过镜头就不动。 |
+| `active` | `boolean` | 正在审计。 |
+| `current` | `MappingAudit \| null` | 正在显示的那份审计。 |
+| `selected` | `AuditTarget \| null` | 选中的那一项（一份拷贝）。 |
+| `select(target)` | `(target: AuditTarget \| null) => void` | 选中一项、镜头框住它；`null` 或者不认得的项清掉选中，镜头交还。 |
+| `shot(target, opts?)` | `(target: AuditTarget, opts?: { duration?: number }) => void` | 只框住一项，不选中。`duration` 单位秒（缺省 1.2，`0` 直接跳过去）。 |
+| `on(event, cb)` | `() => void` | `enter` 带 `MappingAudit`（`setTheme` 以后也会发），`exit` 带 `null`，`select` 带新的 `AuditTarget \| null`（清单、图上点击、`select` 都算）。 |
+
+```ts
+interface AuditTarget {
+  kind: 'relation' | 'join' | 'node'
+  id: string   // RelationAudit.id、JoinAudit.id，或者审计的两层里的节点 id
+}
+```
+
+`auditColors(scheme?)` 返回审计在 3D 里用的 `{ gap, weak }`，自己写面板时用。给主题（`auditColors(strata.theme)`）或者 `'dark' | 'light'`，跟着 `theme.diffScheme` 走。React 的 `AuditPanel` 就是这么取的。`kgstrata/audit` 也转出了 `auditMappings` 和它的类型。
+
+### 视图状态
+
+审计时插件往视图状态里登记 `audit`：
+
+```ts
+strata.view.audit  // 审计时是 { selected: AuditTarget | null }，否则是 null
+strata.setView({ audit: { selected: { kind: 'node', id: 'c:invoice' } } })
+```
+
+`setView` 只在正在审计时才生效；先调 `audit.show()`。
+
 ## 自己写插件
 
 插件是一个带 `name` 和 `install(ctx)` 的对象。`install` 拿到 `StrataContext`，返回你想让 `use()` 交回去的接口。
@@ -197,6 +265,7 @@ export function myPlugin(): StrataPlugin<{ hello(): void }> {
 
 | 成员 | 含义 |
 |---|---|
+| `data` | `setData` 最后一次给的数据，原样（`strata.data`）；之前是 `null`。 |
 | `model` | 全景的 `Model`，`setData` 之前是 `null`。有模式接管时它不变。 |
 | `current` | 现在画的模型：有模式接管时是模式的，否则就是 `model`。 |
 | `mode` | 正在接管的模式属于哪个插件，没有是 `null`。 |
@@ -249,7 +318,7 @@ export function myPlugin(): StrataPlugin<{ hello(): void }> {
 改变画面有两种做法，一个插件可以兼有。
 
 - **叠加层**（`ctx.overlay({ spotlight?, paint? })`）：在全景上叠东西。`spotlight()` 返回一个 `Spotlight`（`{ rank }`，每个画出来的节点一项，`> 0` 点亮，`0` 压暗），或者 `null`。核心的样式据此压暗其余的，和聚焦、主次的压暗按顺序叠在一起。`paint(looks, frame)` 在样式算完以后调，可以往这一帧的 `Looks` 里写东西（名字、徽标、序号、`looks.extra.path`、涟漪）。路径回放就是叠加层。几个叠加层都给了 spotlight 时，后装的说了算。
-- **模式**（`ctx.takeOver(mode)`）：接管画什么。`StrataMode` 自带 `model`、渲染器的 `base` 和 `looks(frame)`，可选 `hover(i)`、`select(i)`、`released()`。同一时刻只有一个模式；别的插件接管或者 `setData` 时，前一个模式收到 `released()`。两版对比就是模式。建 `Model`、上样式用 `kgstrata/internals`，见[接管模式的例子](#例子接管模式)。
+- **模式**（`ctx.takeOver(mode)`）：接管画什么。`StrataMode` 自带 `model`、渲染器的 `base` 和 `looks(frame)`，可选 `hover(i)`、`select(i)`、`released()`。同一时刻只有一个模式；别的插件接管、`setData` 或者 `dispose()` 时，前一个模式收到 `released()`。模式在画的时候展开、收起的节点，交还画面时补到全景上，不管是哪个模式交还的。两版对比就是模式。建 `Model`、上样式用 `kgstrata/internals`，见[接管模式的例子](#例子接管模式)。
 
 ### 每帧的管线
 

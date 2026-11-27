@@ -139,8 +139,8 @@ describe('引入闭包', () => {
     expect(offenders).toEqual([])
   })
 
-  it('核心的五个入口不带 react，也不碰 react/ 目录', () => {
-    for (const entry of ['index.ts', 'headless.ts', 'internals.ts', 'path/index.ts', 'diff/index.ts']) {
+  it('核心的六个入口不带 react，也不碰 react/ 目录', () => {
+    for (const entry of ['index.ts', 'headless.ts', 'internals.ts', 'path/index.ts', 'diff/index.ts', 'audit/index.ts']) {
       const { files, packages } = closure(entry)
       expect(packages.filter(isReact), entry).toEqual([])
       expect(files.filter((f) => f.startsWith(`${ROOT}react/`)), entry).toEqual([])
@@ -162,6 +162,15 @@ describe('引入闭包', () => {
     expect(files.filter((f) => f.startsWith(`${ROOT}diff/`) || f === `${ROOT}react/diff.tsx`)).toEqual([])
   })
 
+  it('审计插件和它的面板：不带 kgdiff，也没有路径回放和看变化的代码', () => {
+    for (const entry of ['audit/index.ts', 'react/audit.tsx']) {
+      const { files, packages } = closure(entry)
+      expect(packages.filter((p) => p.startsWith('@kgdiff/')), entry).toEqual([])
+      expect(files.filter((f) => f.startsWith(`${ROOT}path/`) || f.startsWith(`${ROOT}diff/`)), entry).toEqual([])
+    }
+    expect(closure('react/audit.tsx').files).toContain(`${ROOT}audit/index.ts`)
+  })
+
   it('React 的变化面板经由看变化的入口带着 kgdiff，自己不直接引入', () => {
     const { files, packages } = closure('react/diff.tsx')
     expect(files).toContain(`${ROOT}diff/index.ts`)
@@ -177,7 +186,7 @@ describe('引入闭包', () => {
   })
 
   it('效果页只按包名引入 kgstrata（和用的人一样），不碰库的源码，也不碰 kgdiff', () => {
-    const ENTRIES = ['kgstrata', 'kgstrata/path', 'kgstrata/diff', 'kgstrata/react', 'kgstrata/react/path', 'kgstrata/react/diff', 'kgstrata/react/styles.css']
+    const ENTRIES = ['kgstrata', 'kgstrata/path', 'kgstrata/diff', 'kgstrata/audit', 'kgstrata/react', 'kgstrata/react/path', 'kgstrata/react/diff', 'kgstrata/react/audit', 'kgstrata/react/styles.css']
     const demo = Object.keys(DEMO)
     expect(demo).toContain('../demo/src/App.tsx')
     for (const f of demo) {
